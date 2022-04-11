@@ -359,18 +359,6 @@ int main()
 	{
 		printf("create 3 error!\n");
 	}
-	if(SMSG->MsgQueue_Wait())
-	{
-		string ff;
-		string str = "Login";
-		SMSG->que.push(str);
-		SMSG->que.push(IntToString(10));
-		ff = "11111111";
-		SMSG->que.push(ff);
-		ff = "123456";
-		SMSG->que.push(ff);
-		SMSG->MsgQueue_Close();
-	}
 	CEpoll* epoll = new CEpoll();
 	int port = atoi("8080");
 	char ipp[] = "10.0.128.212";
