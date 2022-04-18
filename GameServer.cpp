@@ -20,8 +20,6 @@ using namespace std;
 const int MaxRoom = 1024;
 int sockfd;
 MsgQueue* RMSG;
-map<string, bool> LoginMap;//确认是否完成登录
-map<int, string> IdMap;//通过fd获取账号
 map<int, int> RoomIdMap;//通过fd获取房间号
 map<int, bool> RoomMap;//记录房间内所有人的消息是否收到
 map<int, long long> LastTime;//房间上次发消息的时间
@@ -320,7 +318,7 @@ int main()
 				else if(nAccount.move() == 6)//用户准备
 				{
 					RoomMap[nAccount.fd()] = true;
-					if(RoomMember[nAccount.roomid()].size() == 4)//人数到齐
+					if(RoomMember[nAccount.roomid()].size() == 4)
                 	{
 						bool flag = true;
 						for(int i = 0; i < RoomMember[nAccount.roomid()].size(); i ++)
@@ -332,7 +330,7 @@ int main()
 						}
 						if(flag == true)
 						{
-							GameStartRoom.insert(nAccount.roomid());//将房间号加入开始游戏的房间set
+							GameStartRoom.insert(nAccount.roomid());//将房间号加入开始游戏的房间
 							for(int i = 0; i < RoomMember[nAccount.roomid()].size(); i ++)
 							{
 								RoomMap[RoomMember[nAccount.roomid()][i]] = false;
