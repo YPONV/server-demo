@@ -121,7 +121,17 @@ void SendToGateServer(Account& nAccount)//flag记录是什么事件
 	int sz = nAccount.ByteSize();
 	nAccount.SerializeToArray(p, sz);
 	AddPack(pp, p, sz);
-	write(sockfd, pp, sz + 4);
+	char* ptr = pp;
+	while(sz > 0)
+	{
+		int written_bytes = write(sockfd, ptr, sz + 4);
+		if(written_bytes < 0)
+        {       
+            printf("SendMessage error!\n");
+        }
+        sz -= written_bytes;
+        ptr += written_bytes;     
+	}
 }
 void SendToHallPlayer(Account nAccount)
 {
@@ -129,7 +139,7 @@ void SendToHallPlayer(Account nAccount)
     for(it = HallPlayer.begin() ;it != HallPlayer.end(); it ++ )
     {
 		int fd = *it;
-		nAccount.set_fd(fd);//需要发给fd
+		nAccount.set_fd(fd);//需要发给的fd
 		SendToGateServer(nAccount);
 	}
 }
@@ -177,6 +187,7 @@ void do_SendMessage()//给房间所有人发送消息
             {
                 for(int j = 0; j <= RoomMessage[Roomid].size(); j ++)
                 {
+					RoomMessage[Roomid][j].set_fd(RoomMember[Roomid][i]);//将消息的fd置为要发生的fd
                     SendToGateServer(RoomMessage[Roomid][j]);
                 }
                 RoomMap[RoomMember[Roomid][i]] = false;
@@ -250,7 +261,7 @@ static void * Rpthread(void *arg)//接收来自GateServce的消息
 			    id ++;
 			}
 		}
-		sleep(0.03);	
+		sleep(0.003);	
 	}
 }
 int main()
@@ -271,7 +282,7 @@ int main()
                 RMSG->que.pop();
                 Account nAccount;
                 StringToProtobuf(nAccount, str);
-				if(nAccount.move() == 8)//同步消息
+				if(nAccount.move() == 9)//同步消息
                 {
                     //房间人数到齐且为操作消息
                     RoomMap[nAccount.fd()] = true;//记录该消息已收到
@@ -345,6 +356,10 @@ int main()
 					{
 						RoomMap[nAccount.fd()] = false;
 					}
+				}
+				else if(nAccount.move() == 8)//游戏结束
+				{
+
 				}
             }
             RMSG->MsgQueue_Close();
