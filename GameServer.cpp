@@ -126,17 +126,17 @@ void SendToGateServer(Account& nAccount)//flag记录是什么事件
 	AddPack(pp, p, sz);
 	write(sockfd, pp, sz + 4);
 }
-void SendToHallPlayer(Account& nAccount)
+void SendToHallPlayer(Account nAccount)
 {
 	set<int>::iterator it;
     for(it = HallPlayer.begin() ;it != HallPlayer.end(); it ++ )
     {
 		int fd = *it;
-		nAccount.set_fd(fd);
+		nAccount.set_fd(fd);//需要发给fd
 		SendToGateServer(nAccount);
 	}
 }
-void RoomMemberRemove(Account nAccount)
+void RoomMemberRemove(Account& nAccount)
 {
 	vector<int> NewRoom;
 	for(int i = 0; i <= RoomMember[nAccount.roomid()].size(); i ++)
@@ -274,7 +274,7 @@ int main()
                 RMSG->que.pop();
                 Account nAccount;
                 StringToProtobuf(nAccount, str);
-				if(nAccount.move() == 6 && RoomMember[nAccount.roomid()].size() == 4)//同步消息
+				if(nAccount.move() == 8)//同步消息
                 {
                     //房间人数到齐且为操作消息
                     RoomMap[nAccount.fd()] = true;//记录该消息已收到
@@ -290,37 +290,63 @@ int main()
                 else if(nAccount.move() == 3)//请求分配房间
                 {
                     nAccount.set_roomid(RoomNumber.front());//分配房间
+					RoomNumber.pop();
                     RoomIdMap[nAccount.fd()] = nAccount.roomid();
-                    RoomNumber.pop();
-					HallPlayer.erase(nAccount.fd());//将玩家移出大厅
                     RoomMember[nAccount.roomid()].push_back(nAccount.fd());
                     SendToHallPlayer(nAccount);
+					HallPlayer.erase(nAccount.fd());//从大厅set中删除该角色fd
                 }
 				else if(nAccount.move() == 4)//用户加入房间
 				{
 				 	RoomMember[nAccount.roomid()].push_back(nAccount.fd());
                     RoomIdMap[nAccount.fd()] = nAccount.roomid();
-					HallPlayer.erase(nAccount.fd());
                     SendToHallPlayer(nAccount);
-                    if(RoomMember[nAccount.roomid()].size() == 4)//将人数到齐的房间存起来
-                	{
-                        GameStartRoom.insert(nAccount.roomid());
-                    }
+					HallPlayer.erase(nAccount.fd());//从大厅set中删除该角色fd
 				}
 				else if(nAccount.move() == 5)//用户退出所在房间
 				{
-					int fd = nAccount.fd();
-					string str = nAccount.roomid();
-					str = IntToString(str);
+					int Roomid = nAccount.roomid();
+					string str = IntToString(Roomid);
 					nAccount.set_message(str);//
-					SendToHallPlayer(nAccount);//将它退出的房间号发给所有大厅的人
+					SendToHallPlayer(nAccount);//将它退出的房间号发给所有大厅的人房间变化
 					RoomMemberRemove(nAccount);//将该人从房间移除
-					nAccount.set_fd(fd);
 					str = GetRoomString();
 					nAccount.set_message(str);
-					SendToGateServer(nAccount);//将当前房间信息发送给退出的人
+					SendToGateServer(nAccount);//将当前房间信息发送给退出房间的人
+					RoomMap[nAccount.fd()] = false;//准备状态改为0
 					RoomIdMap[nAccount.fd()] = 0;//将fd在的房间号置为0
-					HallPlayer.insert(nAccount.fd());//单独发送
+					HallPlayer.insert(nAccount.fd());//将fd插入大厅set
+				}
+				else if(nAccount.move() == 6)//用户准备
+				{
+					RoomMap[nAccount.fd()] = true;
+					if(RoomMember[nAccount.roomid()].size() == 4)//将人数到齐的房间存起来
+                	{
+						bool flag = true;
+						for(int i = 0; i < RoomMember[nAccount.roomid()].size(); i ++)
+						{
+							if(RoomMap[RoomMember[nAccount.roomid()][i]] != true)
+							{
+								flag = false;
+							}
+						}
+						if(flag == true)
+						{
+							GameStartRoom.insert(nAccount.roomid());//将房间号加入开始游戏的房间
+							for(int i = 0; i < RoomMember[nAccount.roomid()].size(); i ++)
+							{
+								RoomMap[RoomMember[nAccount.roomid()][i]] = false;
+							}
+							//发送开始游戏的消息
+						}
+                    }
+				}
+				else if(nAccount.move() == 7)//取消准备
+				{
+					if(GameStartRoom.count(nAccount.roomid()) == 0)//可能因为网络延迟游戏已经开始，没开始才置为1
+					{
+						RoomMap[nAccount.fd()] = false;
+					}
 				}
             }
             RMSG->MsgQueue_Close();
