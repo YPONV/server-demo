@@ -29,8 +29,8 @@ map<int, int> LengthMap;//通过fd获取剩余需要读取的消息长度
 map<int, string> MessageMap;//通过fd得到缓存的消息
 map<int, int> indexMap;//通过fd得知目前消息头读到了第几位
 
-vector< vector<int> > RoomMember;//记录每个房间包含的fd
-vector< vector<Account> > RoomMessage;//每个房间内的消息
+vector< vector<int> > RoomMember(MaxRoom);//记录每个房间包含的fd
+vector< vector<Account> > RoomMessage(MaxRoom);//每个房间内的消息
 queue<int> RoomNumber;//可分配房间号
 
 void init()
@@ -52,19 +52,19 @@ string IntToString(int num)
 	while(num)
 	{
 		str += num%10+'0';
-		num/=10;
+		num /= 10;
 	}
 	reverse(str.begin(),str.end());
 	return str;
 }
 int StringToInt(string str)
 {
-	int fd = 0;
+	int number = 0;
 	for(int i = 0; i < str.size(); i ++ )
 	{
-		fd = fd * 10 + str[i] - '0';
+		number = number * 10 + str[i] - '0';
 	}
-	return fd;
+	return number;
 }
 void StringToProtobuf(Account& nAccount, string& Message)
 {
@@ -169,7 +169,7 @@ void do_SendMessage()//给房间所有人发送消息
     {
         int Roomid = *it;
         bool flag = true;
-        for(int i = 0; i <= 3; i ++ )
+        for(int i = 0; i <= RoomMember[Roomid].size(); i ++ )
         {
             if(RoomMap[RoomMember[Roomid][i]] == false)//该消息未到
             {
@@ -183,7 +183,7 @@ void do_SendMessage()//给房间所有人发送消息
         long long nowtime = Gettime();
         if(nowtime - LastTime[Roomid] >= 34)
         {
-            for(int i = 0; i <= 3; i ++ )
+            for(int i = 0; i <= RoomMember[Roomid].size(); i ++ )
             {
                 for(int j = 0; j <= RoomMessage[Roomid].size(); j ++)
                 {
