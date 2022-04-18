@@ -28,13 +28,13 @@ void CSql::Sql_Connect()
 	}
 }
 
-void CSql::prepare(string& name, string& password)
+void CSql::prepare(string& UID, string& password)
 {
     //设置插入的类型和长度等信息
     memset(params, 0, sizeof(params));
     params[0].buffer_type = MYSQL_TYPE_STRING;
-    params[0].buffer = const_cast<char *>(name.c_str());
-    params[0].buffer_length = name.size();
+    params[0].buffer = const_cast<char *>(UID.c_str());
+    params[0].buffer_length = UID.size();
     params[1].buffer_type = MYSQL_TYPE_STRING;
     params[1].buffer = const_cast<char *>(password.c_str());
     params[1].buffer_length = password.size();
@@ -82,45 +82,70 @@ int CSql::Sql_Write(string& UID, string& name, string& password)
 int CSql::Sql_Query(string& UID, string& password)
 {
     st = mysql_stmt_init(sql);
-    const char *query = "select * from player where uid=? and password=?;";
+    const char *query = "select * from player where uid=?;";
     if(mysql_stmt_prepare(st, query, strlen(query)))
     {
         fprintf(stderr, "mysql_stmt_prepare: %s\n", mysql_error(sql));
         exit(0);
     }
-    prepare(UID, password);
-    mysql_stmt_bind_param(st, params);    
-    //MYSQL_RES* prepare_meta_result = mysql_stmt_result_metadata(st); 
-    //int column_count= mysql_num_fields(prepare_meta_result);
+    memset(params, 0, sizeof(params));
+    params[0].buffer_type = MYSQL_TYPE_STRING;
+    params[0].buffer = const_cast<char *>(UID.c_str());
+    params[0].buffer_length = UID.size();
+    mysql_stmt_bind_param(st, params); 
 
+    MYSQL_BIND bind[3];
+    memset(bind,0,sizeof bind);
+    char str_data1[100], str_data2[100], str_data3[100];
+    memset(str_data1,0,sizeof str_data1);
+    memset(str_data2,0,sizeof str_data2);
+    memset(str_data3,0,sizeof str_data3);
+    unsigned long str_length[3];
+    bind[0].buffer_type= MYSQL_TYPE_STRING; //设置第2个占位符的属性
+    bind[0].buffer= (char *)str_data1;
+    bind[0].buffer_length= 64;
+    bind[0].is_null= 0;
+    bind[0].length= &str_length[0];
+
+    bind[1].buffer_type= MYSQL_TYPE_STRING; //设置第2个占位符的属性
+    bind[1].buffer= (char *)str_data2;
+    bind[1].buffer_length= 64;
+    bind[1].is_null= 0;
+    bind[1].length= &str_length[1];
+
+    bind[2].buffer_type= MYSQL_TYPE_STRING; //设置第3个占位符的属性
+    bind[2].buffer= (char *)str_data2;
+    bind[2].buffer_length= 64;
+    bind[2].is_null= 0;
+    bind[2].length= &str_length[2];
+
+    if (mysql_stmt_bind_result(st, bind))
+    {
+        fprintf(stderr, " mysql_stmt_bind_result() failed\n");
+        fprintf(stderr, " %s\n", mysql_stmt_error(st));
+        exit(0);
+    }
     if (mysql_stmt_execute(st))//执行与语句句柄相关的预处理
     {
         fprintf(stderr, " mysql_stmt_execute(), failed\n");
         fprintf(stderr, " %s\n", mysql_stmt_error(st));
         exit(0);
     }
-    //对结果集进行缓冲处理
-    if(mysql_stmt_store_result(st))
+    int number = 0;
+    while(!mysql_stmt_fetch(st))
     {
-        fprintf(stderr, " mysql_stmt_store_result() failed\n");
-        fprintf(stderr, " %s\n", mysql_stmt_error(st));
-        exit(0);
+        number ++;
+        int len = strlen(str_data2);
+        for(int i = 0; i < len; i ++)
+        {
+            password += str_data2[i];
+        }
     }
-    int row_count = mysql_stmt_affected_rows(st);//受影响的行
-    if (mysql_stmt_close(st))
-    {
-        fprintf(stderr, " failed while closing the statement\n");
-        fprintf(stderr, " %s\n", mysql_stmt_error(st));
-        exit(0);
-    } 
-    if(row_count == 1)//查询成功
-    {
-        return 1;
-    }
-    else return 0;
+    if(number == 1)return true;
+    else return false;
 }
 
-void CSql::Sql_Update(string& name, string& password)
+void CSql::Sql_Update(string& UID, string& password)
 {
     st = mysql_stmt_init(sql);
     const char *query = "update player set password=? where name=?;";
@@ -129,7 +154,7 @@ void CSql::Sql_Update(string& name, string& password)
         fprintf(stderr, "mysql_stmt_prepare: %s\n", mysql_error(sql));
         exit(0);
     }
-    prepare(password, name);
+    prepare(password, UID);
     mysql_stmt_bind_param(st, params); 
     if (mysql_stmt_execute(st))//执行与语句句柄相关的预处理
     {
@@ -145,7 +170,7 @@ void CSql::Sql_Update(string& name, string& password)
     }
 }
 
-void CSql::Sql_Delete(string& name,string &password)
+void CSql::Sql_Delete(string& UID,string &password)
 {
     st = mysql_stmt_init(sql);
     const char *query = "delete from player where name=? and password=?;";
@@ -154,7 +179,7 @@ void CSql::Sql_Delete(string& name,string &password)
         fprintf(stderr, "mysql_stmt_prepare: %s\n", mysql_error(sql));
         exit(0);
     }
-    prepare(name, password);
+    prepare(UID, password);
     mysql_stmt_bind_param(st, params); 
     if (mysql_stmt_execute(st))//执行与语句句柄相关的预处理
     {
