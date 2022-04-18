@@ -1,16 +1,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <vector>
-#include <ctime>
 #include <map>
 #include <string.h>
 #include <queue>
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
 #include <sys/ipc.h>
 #include <pthread.h>
 #include <sys/shm.h>
+#include "project.pb.h"
 #include "MsgQueue.h"
-#include "SharedMemory.h"
 #include "CSql.h"
 #include "CRedis.h"
 using namespace std;
@@ -18,58 +22,108 @@ MsgQueue* RMSG;//接收消息
 MsgQueue* SMSG;//发送消息
 CRedis* redis;
 CSql* sql;
-struct Player
+int sockfd;
+string IntToString(int num)
 {
-    string UID;
-    string name;
-    string password;
-    string flag;
-    string fd;
-};
+	string str = "";
+	if(num == 0)
+	{
+		str += "0";
+		return str;
+	}
+	while(num)
+	{
+		str += num%10+'0';
+		num/=10;
+	}
+	reverse(str.begin(),str.end());
+	return str;
+}
+int StringToInt(string str)
+{
+	int fd = 0;
+	for(int i = 0; i < str.size(); i ++ )
+	{
+		fd = fd * 10 + str[i] - '0';
+	}
+	return fd;
+}
+void StringToProtobuf(Account& nAccount, string& Message)
+{
+	char p[1024];
+	memset(p, '\0', sizeof p);
+	for(int j = 0; j < Message.size(); j ++){
+		p[j] = Message[j];
+	}
+	nAccount.ParseFromArray(p, Message.size());
+}
+void AddPack(char *Newdata,char *data, int len)//给消息包加头
+{
+	int len1=len;
+	for(int i = 3; i >= 0; i --)
+	{
+		if(len1 > 0)
+		{
+			Newdata[i] = len1 % 10 + '0';
+			len1 /= 10;
+		}
+		else Newdata[i] = '0';
+	}
+	for(int i = 0; i < len; i ++)
+	{
+		Newdata[i + 4] = data[i];
+	}
+}
+void SendToGateServer(Account& nAccount)//flag记录是什么事件
+{
+	char p[1024],pp[1024];
+	memset(p,'\0',sizeof p);
+	memset(pp,'\0',sizeof pp);
+	int sz = nAccount.ByteSize();
+	nAccount.SerializeToArray(p, sz);
+	AddPack(pp, p, sz);
+	write(sockfd, pp, sz + 4);
+}
 bool Isexist(string str)
 {
     string password = "";//用来存储查到的密码
     int ret = redis->Redis_Query(str, password);
     if(password == "")
     {
-        return true;
+        password = sql->Sql_Query(str, password);
+        if(password == "")
+        {
+            return true;
+        }
+        else return false;
     }
     else return false;
 }
-void Player_check(Player* player)
+void Player_check(Account& nAccount)
 {
     int flag = 0;
     string password = "";//用来存储查到的密码
-    int ret = redis->Redis_Query(player->UID, password);
-    if(password == "")
+    string UID = nAccount.uid();
+    int ret = redis->Redis_Query(UID, password);
+    if(password == "")//redis未查到密码，查mysql
     {
-        flag = sql->Sql_Query(player->UID, player->password);
-    }
-    while(1)
-    {
-        if(SMSG->MsgQueue_Wait())
+        flag = sql->Sql_Query(UID, password);
+        if(flag == 1 && password == nAccount.password())//mysql内有,存入Redis
         {
-            string str = "Login";
-            SMSG->que.push(str);
-            SMSG->que.push(player->fd);
-            SMSG->que.push(player->UID);
-            str = "";
-            if(password == player->password || flag)
-            {
-                str = "YES";
-            }
-            else
-            {
-                str = "NO";
-            }
-            SMSG->que.push(str);
-            SMSG->MsgQueue_Close();
-            break;//信息发送完毕则退出
+            redis->Redis_Write(UID, password);
         }
-        sleep(0.03);
     }
+    if(password == nAccount.password())
+    {
+        nAccount.set_flag(true);
+    }
+    else
+    {
+        nAccount.set_flag(false);
+    }
+    SendToGateServer(nAccount);
 }
-void Player_register(Player* player)
+void Player_register(Account& nAccount)
 {
     string str;
     srand(unsigned(time(nullptr)));
@@ -83,74 +137,84 @@ void Player_register(Player* player)
         }
         if(Isexist(str))//账号合法
         {
-            if(SMSG->MsgQueue_Wait())
-            {
-                string str1 = "Register";
-                SMSG->que.push(str1);
-                SMSG->que.push(player->fd);//fd
-                //cout<<str<<endl;
-                SMSG->que.push(str);//账号
-                str1 = "YES";
-                SMSG->que.push(str1);
-                redis->Redis_Write(str, player->password);
-                sql->Sql_Write(str, player->name, player->password);
-                SMSG->MsgQueue_Close();
-                break;
-            }
+			nAccount.set_flag(true);
+			string name = nAccount.name();
+			string password = nAccount.password();
+            sql->Sql_Write(str, name, password);
+			redis->Redis_Write(str, password);
+			SendToGateServer(nAccount);
+            break;
         }
         else sleep(0.03);
     }
 }
-static void * Spthread(void *arg)
-{
-    SharedMemory* SendMessage = new SharedMemory();
-    SendMessage->SharedMemory_init(0x5003, 1024, 0640|IPC_CREAT, 0x5004, 1, 0640);
-    while(1)
-    {
-        if(SMSG->MsgQueue_Wait())
-        {
-            if(SendMessage->SharedMemory_Wait())
-            {
-                string str = SendMessage->SharedMemory_Read();
-                if(str == "OK")
-                {
-                    if(!SMSG->que.empty())
-                    {
-                        str = SMSG->que.front();
-                        SMSG->que.pop();
-                        SendMessage->SharedMemory_Write(str);
-                    }
-                }
-                SendMessage->SharedMemory_Close();
-            }
-            SMSG->MsgQueue_Close();
-        }
-        sleep(0.03);
-    }
-}
 static void * Rpthread(void *arg)
 {
-    SharedMemory* SendMessage = new SharedMemory();
-    SendMessage->SharedMemory_init(0x5001, 1024, 0640|IPC_CREAT, 0x5002, 1, 0640);
-    while(1)
-    {
-        if(RMSG->MsgQueue_Wait())
-        {
-            if(SendMessage->SharedMemory_Wait())
-            {
-                string str = SendMessage->SharedMemory_Read();
-                if(str != "OK")
+    string Message = "";
+	int flag = 0, number = 0, id = 0;
+	if( (sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+	{
+		perror("socket");
+	}
+	struct hostent* h;
+	if( (h = gethostbyname("10.0.128.212")) == 0)
+	{
+		printf("gethostbyname failed,\n");
+		close(sockfd);
+	}
+	struct sockaddr_in servaddr;
+	memset(&servaddr, 0, sizeof(servaddr));
+	servaddr.sin_family = AF_INET;
+	servaddr.sin_port = htons(atoi("1111"));
+	memcpy(&servaddr.sin_addr, h->h_addr, h->h_length);
+	if(connect(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) != 0)
+	{
+		perror("connect");
+		close(sockfd);
+	}
+	char buffer[1024];
+	while(1)
+	{
+		int iret;
+		memset(buffer, 0, sizeof(buffer));
+		if( (iret = recv(sockfd, buffer, sizeof(buffer), 0)) <= 0)
+		{
+			printf("iret=%d\n",iret);
+			break;
+		}
+		for(int i = 0; i < iret; i ++ )
+		{
+			if(number > 0 && id == 4)
+			{
+			    Message += buffer[i];
+			    number --;
+			}
+			if(number == 0 && id == 4)
+			{
+				Account nAccount;
+				StringToProtobuf(nAccount, Message);//将string反序列化
+				while(1)
                 {
-                    RMSG->que.push(str);
-                    str = "OK";
-                    SendMessage->SharedMemory_Write(str);
+                    if(RMSG->MsgQueue_Wait())
+                    {
+                        RMSG->que.push(Message);
+                        RMSG->MsgQueue_Close();
+                        break;
+                    }
+                    else sleep(0.03);
                 }
-                SendMessage->SharedMemory_Close();
-            }
-            RMSG->MsgQueue_Close();
-        }
-        sleep(0.03);
-    }
+			    Message = "";
+			    id = 0;
+			    continue;
+ 			}
+            if(id < 4)
+			{
+		        number = number*10+buffer[i]-'0';
+			    id ++;
+			}
+		}
+		sleep(0.03);	
+	}
 }
 int main()
 {
@@ -158,21 +222,15 @@ int main()
     SMSG = new MsgQueue();//带线程锁的发送消息队列
     RMSG->MsgQueue_Init();
     SMSG->MsgQueue_Init();
-    Player* player = new Player();//玩家数据结构体
     redis = new CRedis();
     redis->Redis_Connect();
     sql = new CSql();
     sql->Sql_Connect();
-    pthread_t tidp[2];
-    if ((pthread_create(&tidp[0], NULL, Rpthread, NULL)) == -1)
+    pthread_t tidp;
+    if ((pthread_create(&tidp, NULL, Rpthread, NULL)) == -1)
 	{
 		printf("create error!\n");
 	}
-    if ((pthread_create(&tidp[1], NULL, Spthread, NULL)) == -1)
-	{
-		printf("create error!\n");
-	}
-    int index = 0;//用来记录目前消息是否全部接收
     while(1)
     {
         if(RMSG->MsgQueue_Wait())
@@ -180,37 +238,17 @@ int main()
             while(!RMSG->que.empty())
             {
                 string str = RMSG->que.front();
-                index ++;
                 RMSG->que.pop();
-                if(index == 1)
+                Account nAccount;
+                StringToProtobuf(nAccount, str);
+                if(nAccount.move() == 1)//登录
                 {
-                    player->flag = str;
+                    Player_check(nAccount);
                 }
-                else if(index == 2)
-                {
-                    player->fd = str;
-                }
-                else if(index == 3)
-                {
-                    if(player->flag == "Login")
-                    {
-                        player->UID = str;
-                    }
-                    else
-                    {
-                        player->name = str;
-                    }
-                }
-                else if(index == 4)
-                {
-                    player->password = str;
-                    if(player->flag == "Login")
-                    {
-                        Player_check(player);
-                    }
-                    else Player_register(player);
-                    index = 0;
-                }
+				else
+				{
+					Player_register(nAccount);
+				}
             }
             RMSG->MsgQueue_Close();
         }
