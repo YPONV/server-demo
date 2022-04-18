@@ -343,7 +343,7 @@ int main()
 				}
 				else if(nAccount.move() == 7)//取消准备
 				{
-					if(GameStartRoom.count(nAccount.roomid()) == 0)//可能因为网络延迟游戏已经开始，没开始才置为1
+					if(GameStartRoom.count(nAccount.roomid()) == 0)//可能因为网络延迟游戏已经开始，没开始才置为0
 					{
 						RoomMap[nAccount.fd()] = false;
 					}
