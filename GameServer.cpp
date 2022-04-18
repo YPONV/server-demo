@@ -320,7 +320,7 @@ int main()
 				else if(nAccount.move() == 6)//用户准备
 				{
 					RoomMap[nAccount.fd()] = true;
-					if(RoomMember[nAccount.roomid()].size() == 4)//将人数到齐的房间存起来
+					if(RoomMember[nAccount.roomid()].size() == 4)//人数到齐
                 	{
 						bool flag = true;
 						for(int i = 0; i < RoomMember[nAccount.roomid()].size(); i ++)
@@ -332,7 +332,7 @@ int main()
 						}
 						if(flag == true)
 						{
-							GameStartRoom.insert(nAccount.roomid());//将房间号加入开始游戏的房间
+							GameStartRoom.insert(nAccount.roomid());//将房间号加入开始游戏的房间set
 							for(int i = 0; i < RoomMember[nAccount.roomid()].size(); i ++)
 							{
 								RoomMap[RoomMember[nAccount.roomid()][i]] = false;
