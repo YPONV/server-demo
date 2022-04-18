@@ -33,5 +33,6 @@ enum
     int Redis_Delete(string& key);//返回成功删除的行数，可能为0
     string getErrorMsg();
 
+
     int handleReply(void* value = NULL, redisReply ***array = NULL);
 };
