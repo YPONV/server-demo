@@ -1,0 +1,14 @@
+syntax="proto3";
+message Account
+{
+	string uid=1;//账号
+	string name=2;//姓名
+	string password=3;//密码
+	bool flag=4;//是否登录成功
+	string message=5;
+	int32  move=6;//操作
+	int32  roomid=7;//房间号
+	int32  fd=8;
+	int32  id=9;
+}
+
