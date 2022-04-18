@@ -82,7 +82,17 @@ void SendToGateServer(Account& nAccount)//flag记录是什么事件
 	int sz = nAccount.ByteSize();
 	nAccount.SerializeToArray(p, sz);
 	AddPack(pp, p, sz);
-	write(sockfd, pp, sz + 4);
+	char* ptr = pp;
+	while(sz > 0)
+	{
+		int written_bytes = write(sockfd, ptr, sz + 4);
+		if(written_bytes < 0)
+        {       
+            printf("SendMessage error!\n");
+        }
+        sz -= written_bytes;
+        ptr += written_bytes;     
+	}
 }
 bool Isexist(string str)
 {
