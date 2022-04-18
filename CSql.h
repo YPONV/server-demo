@@ -24,12 +24,12 @@ public:
     //写入
     int Sql_Write(string& UID, string& name, string& password);
     //查询
-    int Sql_Query(string& name, string& password);
+    int Sql_Query(string& UID, string& password);
     //修改
-    void Sql_Update(string& name, string& password);
+    void Sql_Update(string& UID, string& password);
     //删除
-    void Sql_Delete(string& name, string& password);
+    void Sql_Delete(string& UID, string& password);
     //准备需要绑定的数组
-    void prepare(string& name, string& password);
+    void prepare(string& UID, string& password);
     void prepare1(string& UID, string& name, string& password);
 };
