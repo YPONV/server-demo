@@ -20,7 +20,6 @@ using namespace std;
 const int MaxRoom = 1024;
 int sockfd;
 MsgQueue* RMSG;
-map<int, int> RoomIdMap;//通过fd获取房间号
 map<int, bool> RoomMap;//记录房间内所有人的消息是否收到
 map<int, long long> LastTime;//房间上次发消息的时间
 set<int> GameStartRoom;//目前已经开始的房间
@@ -276,20 +275,19 @@ int main()
                 {
                     //房间人数到齐且为操作消息
                     RoomMap[nAccount.fd()] = true;//记录该消息已收到
-                    RoomMessage[RoomIdMap[nAccount.fd()]].push_back(nAccount);
+                    RoomMessage[nAccount.roomid()].push_back(nAccount);
                 }
 				else if(nAccount.move() == 1)//登陆成功，将当前所有的房间发回去
 				{
 					string str = GetRoomString();//将所有现存房间以及人数发回客户端
 					nAccount.set_message(str);
 					HallPlayer.insert(nAccount.fd());//将玩家插入大厅set
-					SendToHallPlayer(nAccount);
+					SendToGateServer(nAccount);
 				}
                 else if(nAccount.move() == 3)//请求分配房间
                 {
                     nAccount.set_roomid(RoomNumber.front());//分配房间
 					RoomNumber.pop();
-                    RoomIdMap[nAccount.fd()] = nAccount.roomid();
                     RoomMember[nAccount.roomid()].push_back(nAccount.fd());
                     SendToHallPlayer(nAccount);
 					HallPlayer.erase(nAccount.fd());//从大厅set中删除该角色fd
@@ -297,7 +295,6 @@ int main()
 				else if(nAccount.move() == 4)//用户加入房间
 				{
 				 	RoomMember[nAccount.roomid()].push_back(nAccount.fd());
-                    RoomIdMap[nAccount.fd()] = nAccount.roomid();
                     SendToHallPlayer(nAccount);
 					HallPlayer.erase(nAccount.fd());//从大厅set中删除该角色fd
 				}
@@ -305,14 +302,17 @@ int main()
 				{
 					int Roomid = nAccount.roomid();
 					string str = IntToString(Roomid);
-					nAccount.set_message(str);//
+					nAccount.set_message(str);
 					SendToHallPlayer(nAccount);//将它退出的房间号发给所有大厅的人房间变化
 					RoomMemberRemove(nAccount);//将该人从房间移除
+					if(RoomMember[nAccount.roomid()].size() == 0)//该房间没人了
+					{
+						RoomNumber.push(nAccount.roomid());
+					}
 					str = GetRoomString();
 					nAccount.set_message(str);
 					SendToGateServer(nAccount);//将当前房间信息发送给退出房间的人
 					RoomMap[nAccount.fd()] = false;//准备状态改为0
-					RoomIdMap[nAccount.fd()] = 0;//将fd在的房间号置为0
 					HallPlayer.insert(nAccount.fd());//将fd插入大厅set
 				}
 				else if(nAccount.move() == 6)//用户准备
