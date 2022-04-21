@@ -32,4 +32,6 @@ public:
     //准备需要绑定的数组
     void prepare(string& UID, string& password);
     void prepare1(string& UID, string& name, string& password);
+
+    string GetAllID();
 };
