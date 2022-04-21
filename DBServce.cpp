@@ -17,9 +17,10 @@
 #include "MsgQueue.h"
 #include "CSql.h"
 #include "CRedis.h"
+#include "BitMap.h"
 using namespace std;
 MsgQueue* RMSG;//接收消息
-MsgQueue* SMSG;//发送消息
+BitMap* bitmap;
 CRedis* redis;
 CSql* sql;
 int sockfd;
@@ -34,19 +35,19 @@ string IntToString(int num)
 	while(num)
 	{
 		str += num%10+'0';
-		num/=10;
+		num /= 10;
 	}
 	reverse(str.begin(),str.end());
 	return str;
 }
 int StringToInt(string str)
 {
-	int fd = 0;
+	int number = 0;
 	for(int i = 0; i < str.size(); i ++ )
 	{
-		fd = fd * 10 + str[i] - '0';
+		number = number * 10 + str[i] - '0';
 	}
-	return fd;
+	return number;
 }
 void StringToProtobuf(Account& nAccount, string& Message)
 {
@@ -117,11 +118,14 @@ void Player_check(Account& nAccount)
     int ret = redis->Redis_Query(UID, password);
     if(password == "")//redis未查到密码，查mysql
     {
-        flag = sql->Sql_Query(UID, password);
-        if(flag == 1 && password == nAccount.password())//mysql内有,存入Redis
-        {
-            redis->Redis_Write(UID, password);
-        }
+		if(bitmap->IsExist(UID))//过滤器中存在
+		{
+			flag = sql->Sql_Query(UID, password);
+			if(flag == 1 && password == nAccount.password())//mysql内有,存入Redis
+			{
+				redis->Redis_Write(UID, password);
+			}
+		}
     }
     if(password == nAccount.password())
     {
@@ -229,9 +233,7 @@ static void * Rpthread(void *arg)
 int main()
 {
     RMSG = new MsgQueue();//带线程锁的接收消息队列
-    SMSG = new MsgQueue();//带线程锁的发送消息队列
     RMSG->MsgQueue_Init();
-    SMSG->MsgQueue_Init();
     redis = new CRedis();
     redis->Redis_Connect();
     sql = new CSql();
@@ -241,6 +243,9 @@ int main()
 	{
 		printf("create error!\n");
 	}
+	bitmap = new BitMap(10000000);
+	string str = sql->GetAllID();//拿过来的所有账号以-隔开
+	bitmap->Init(str);//初始化
     while(1)
     {
         if(RMSG->MsgQueue_Wait())
