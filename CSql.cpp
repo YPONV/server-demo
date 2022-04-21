@@ -194,3 +194,40 @@ void CSql::Sql_Delete(string& UID,string &password)
         exit(0);
     }
 }
+string CSql::GetAllID()
+{
+    string answer = "";
+    const char *query = "select * from player";
+    if(mysql_query(sql, query))
+	{
+		cout << "查询失败" << endl;
+	}
+	MYSQL_RES *result;
+	result = mysql_store_result(sql);
+	if(result)
+	{
+        int row_num , col_num;
+		row_num = mysql_num_rows(result);
+		col_num = mysql_num_fields(result);
+		MYSQL_ROW Row;
+		MYSQL_FIELD *fd;
+		Row = mysql_fetch_row(result);
+		while(Row != NULL)
+		{
+			uint64_t *m_fields_length = mysql_fetch_lengths(result);
+			string str[3];
+			for(int i = 0;i < col_num ;i ++ )
+			{
+				str[i] = std::string(Row[i], (size_t)m_fields_length[i]);
+			}
+            answer += str[0];
+            answer += "-";
+			Row = mysql_fetch_row(result);
+		}
+    }
+    else
+    {
+        printf("error(%d):%s\n", mysql_errno(sql), mysql_error(sql));
+    }
+    return answer;
+}
