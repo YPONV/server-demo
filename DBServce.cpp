@@ -84,9 +84,10 @@ void SendToGateServer(Account& nAccount)//flag记录是什么事件
 	nAccount.SerializeToArray(p, sz);
 	AddPack(pp, p, sz);
 	char* ptr = pp;
+	sz = sz + 4;
 	while(sz > 0)
 	{
-		int written_bytes = write(sockfd, ptr, sz + 4);
+		int written_bytes = write(sockfd, ptr, sz);
 		if(written_bytes < 0)
         {       
             printf("SendMessage error!\n");
