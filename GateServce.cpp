@@ -39,23 +39,23 @@ string IntToString(int num)
 	while(num)
 	{
 		str += num%10+'0';
-		num/=10;
+		num /= 10;
 	}
 	reverse(str.begin(),str.end());
 	return str;
 }
 int StringToInt(string str)
 {
-	int fd = 0;
+	int number = 0;
 	for(int i = 0; i < str.size(); i ++ )
 	{
-		fd = fd * 10 + str[i] - '0';
+		number = number * 10 + str[i] - '0';
 	}
-	return fd;
+	return number;
 }
 void AddPack(char *Newdata,char *data, int len)//给消息包加头
 {
-	int len1=len;
+	int len1 = len;
 	for(int i = 3; i >= 0; i --)
 	{
 		if(len1 > 0)
@@ -78,10 +78,11 @@ void SendMessage(Account& nAccount,int fd)//单独发送消息
 	int sz = nAccount.ByteSize();
 	nAccount.SerializeToArray(p, sz);
 	AddPack(pp, p, sz);
+	sz += 4;
 	char* ptr = pp;
 	while(sz > 0)
 	{
-		int written_bytes = write(fd, ptr, sz + 4);
+		int written_bytes = write(fd, ptr, sz);
 		if(written_bytes < 0)
         {       
             printf("SendMessage error!\n");
@@ -151,7 +152,7 @@ void epoll_servce(int listen_sock)
                         MessageMap[new_sock] = "";
                         indexMap[new_sock] = 0;
 						epoll_ctl(epoll_fd, EPOLL_CTL_ADD, new_sock, &ev);
-						//printf("get a new client\n");
+						printf("get a new client\n");
 					}
 					else{
 						if(ret_ev[i].events & EPOLLIN)
@@ -195,6 +196,10 @@ void epoll_servce(int listen_sock)
 													SendMessage(nAccount, FD[2]);//发送到GameServer
 												}
 											}
+											else if(fd == FD[2])
+											{
+												SendMessage(nAccount, nAccount.fd());
+											}
 											else//从客户端发来的
 											{	
 												nAccount.set_fd(fd);			
@@ -203,6 +208,11 @@ void epoll_servce(int listen_sock)
 										}
 										else if(nAccount.move() >= 3)
 										{
+											//cout<<nAccount.move()<<endl;
+											if(nAccount.move() == 9)
+											{
+												cout<<nAccount.message()<<endl;
+											}
 											if(fd == FD[2])//从GameServer发来
 											{
 												SendMessage(nAccount, nAccount.fd());//发给客户端
