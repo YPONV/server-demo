@@ -92,7 +92,19 @@ string GetRoomString()//将目前有的房间和房间人数存在string里面
 			str += IntToString(i);//房间号
 			str += '-';
 			str += IntToString(RoomMember[i].size());//房间人数
+			str += '-';
 		}
+	}
+	return str;
+}
+string GetRoomState(int RID)//将房间状态发送给房间内人物
+{
+	string str = "";
+	for(int i = 0; i < RoomMember[RID].size(); i ++)
+	{
+		if(RoomMap[RoomMember[RID][i]])
+			str += '1';
+		else str += '0';
 	}
 	return str;
 }
@@ -122,9 +134,10 @@ void SendToGateServer(Account& nAccount)//flag记录是什么事件
 	nAccount.SerializeToArray(p, sz);
 	AddPack(pp, p, sz);
 	char* ptr = pp;
+	sz += 4;
 	while(sz > 0)
 	{
-		int written_bytes = write(sockfd, ptr, sz + 4);
+		int written_bytes = write(sockfd, ptr, sz);
 		if(written_bytes < 0)
         {       
             printf("SendMessage error!\n");
@@ -136,17 +149,26 @@ void SendToGateServer(Account& nAccount)//flag记录是什么事件
 void SendToHallPlayer(Account nAccount)
 {
 	set<int>::iterator it;
-    for(it = HallPlayer.begin() ;it != HallPlayer.end(); it ++ )
+    for(it = HallPlayer.begin(); it != HallPlayer.end(); it ++ )
     {
 		int fd = *it;
 		nAccount.set_fd(fd);//需要发给的fd
 		SendToGateServer(nAccount);
 	}
 }
+void SendToRoomPlayer(Account nAccount)
+{
+	int roomid = nAccount.roomid();
+	for(int i = 0; i < RoomMember[roomid].size(); i ++)
+	{
+		nAccount.set_fd(RoomMember[roomid][i]);
+		SendToGateServer(nAccount);
+	}
+}
 void RoomMemberRemove(Account& nAccount)
 {
 	vector<int> NewRoom;
-	for(int i = 0; i <= RoomMember[nAccount.roomid()].size(); i ++)
+	for(int i = 0; i < RoomMember[nAccount.roomid()].size(); i ++)
 	{
 		if(RoomMember[nAccount.roomid()][i] != nAccount.fd())
 		{
@@ -169,7 +191,7 @@ void do_SendMessage()//给房间所有人发送消息
     {
         int Roomid = *it;
         bool flag = true;
-        for(int i = 0; i <= RoomMember[Roomid].size(); i ++ )
+        for(int i = 0; i < RoomMember[Roomid].size(); i ++ )
         {
             if(RoomMap[RoomMember[Roomid][i]] == false)//该消息未到
             {
@@ -183,13 +205,19 @@ void do_SendMessage()//给房间所有人发送消息
         long long nowtime = Gettime();
         if(nowtime - LastTime[Roomid] >= 34)
         {
-            for(int i = 0; i <= RoomMember[Roomid].size(); i ++ )
+			string str = "";
+			Account nAccount;
+			nAccount.set_move(9);
+			for(int j = 0; j < RoomMessage[Roomid].size(); j ++)
             {
-                for(int j = 0; j <= RoomMessage[Roomid].size(); j ++)
-                {
-					RoomMessage[Roomid][j].set_fd(RoomMember[Roomid][i]);//将消息的fd置为要发生的fd
-                    SendToGateServer(RoomMessage[Roomid][j]);
-                }
+				str += RoomMessage[Roomid][j].message();
+            }
+			RoomMessage[Roomid].clear();
+			nAccount.set_message(str);
+            for(int i = 0; i < RoomMember[Roomid].size(); i ++ )
+            {
+				nAccount.set_fd(RoomMember[Roomid][i]);
+				SendToGateServer(nAccount);
                 RoomMap[RoomMember[Roomid][i]] = false;
             }
             LastTime[Roomid] = nowtime;
@@ -299,15 +327,27 @@ int main()
                 {
                     nAccount.set_roomid(RoomNumber.front());//分配房间
 					RoomNumber.pop();
+					nAccount.set_id(1);
                     RoomMember[nAccount.roomid()].push_back(nAccount.fd());
+					string str = GetRoomString();//将所有现存房间以及人数发回客户端
+					nAccount.set_message(str);
                     SendToHallPlayer(nAccount);
 					HallPlayer.erase(nAccount.fd());//从大厅set中删除该角色fd
                 }
 				else if(nAccount.move() == 4)//用户加入房间
 				{
+					//cout<<nAccount.roomid()<<endl;
 				 	RoomMember[nAccount.roomid()].push_back(nAccount.fd());
+					int id = RoomMember[nAccount.roomid()].size();
+					nAccount.set_id(id);
+					string str = GetRoomString();//将所有现存房间以及人数发回客户端
+					nAccount.set_message(str);
+					HallPlayer.erase(nAccount.fd());
                     SendToHallPlayer(nAccount);
-					HallPlayer.erase(nAccount.fd());//从大厅set中删除该角色fd
+					str = GetRoomState(nAccount.roomid());
+					nAccount.set_message(str);
+					SendToRoomPlayer(nAccount);
+					//HallPlayer.erase(nAccount.fd());//从大厅set中删除该角色fd
 				}
 				else if(nAccount.move() == 5)//用户退出所在房间
 				{
@@ -329,7 +369,11 @@ int main()
 				else if(nAccount.move() == 6)//用户准备
 				{
 					RoomMap[nAccount.fd()] = true;
-					if(RoomMember[nAccount.roomid()].size() == 4)
+					str = GetRoomState(nAccount.roomid());
+					nAccount.set_message(str);
+					cout<<str<<"     "<<RoomMember[nAccount.roomid()].size()<<endl;
+					SendToRoomPlayer(nAccount);
+					if(RoomMember[nAccount.roomid()].size() == 2)
                 	{
 						bool flag = true;
 						for(int i = 0; i < RoomMember[nAccount.roomid()].size(); i ++)
@@ -342,11 +386,17 @@ int main()
 						if(flag == true)
 						{
 							GameStartRoom.insert(nAccount.roomid());//将房间号加入开始游戏的房间
+							string str = "S02";
 							for(int i = 0; i < RoomMember[nAccount.roomid()].size(); i ++)
 							{
 								RoomMap[RoomMember[nAccount.roomid()][i]] = false;
+								//发送开始游戏的消息
+								nAccount.set_move(9);
+								str[1] = ('0' + i + 1);
+								nAccount.set_message(str);
+								nAccount.set_fd(RoomMember[nAccount.roomid()][i]);
+								SendToGateServer(nAccount);
 							}
-							//发送开始游戏的消息
 						}
                     }
 				}
