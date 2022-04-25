@@ -1,171 +1,132 @@
-#include "CSql.h"
+#include "CRedis.h"
 
-CSql::CSql()
+CRedis::CRedis()
 {
-    host = "localhost";
-    user = "game";
-    pwd = "game123u";
-    dbName = "gamedatabase";
-    port=8080;
-    Sql_Connect();
+    Redis_Connect();
 }
 
-CSql::~CSql()
+CRedis::~CRedis()
 {
-    if(sql != NULL)  //关闭数据连接
+    freeReplyObject(pm_rr);
+    if(pm_rct != NULL)
+        redisFree(pm_rct);
+}
+
+void CRedis::Redis_Connect()
+{
+    pm_rct = redisConnect(addr, port);
+    if (pm_rct == NULL || pm_rct->err) 
     {
-        mysql_close(sql);
-    }
-}
-
-void CSql::Sql_Connect()
-{
-    sql = mysql_init(sql);
-	sql = mysql_real_connect(sql, host, user, pwd, dbName, port, nullptr, 0);
-	if(sql == NULL)
-	{
-        printf("Mysql Error\n");
-	}
-}
-
-void CSql::prepare(string& name, string& password)
-{
-    //设置插入的类型和长度等信息
-    memset(params, 0, sizeof(params));
-    params[0].buffer_type = MYSQL_TYPE_STRING;
-    params[0].buffer = const_cast<char *>(name.c_str());
-    params[0].buffer_length = name.size();
-    params[1].buffer_type = MYSQL_TYPE_STRING;
-    params[1].buffer = const_cast<char *>(password.c_str());
-    params[1].buffer_length = password.size();
-}
-void CSql::prepare1(string& UID, string& name, string& password)
-{
-    //设置插入的类型和长度等信息
-    memset(params, 0, sizeof(params));
-    params[0].buffer_type = MYSQL_TYPE_STRING;
-    params[0].buffer = const_cast<char *>(UID.c_str());
-    params[0].buffer_length = UID.size();
-    params[1].buffer_type = MYSQL_TYPE_STRING;
-    params[1].buffer = const_cast<char *>(name.c_str());
-    params[1].buffer_length = name.size();
-    params[2].buffer_type = MYSQL_TYPE_STRING;
-    params[2].buffer = const_cast<char *>(password.c_str());
-    params[2].buffer_length = password.size();
-}
-
-int CSql::Sql_Write(string& UID, string& name, string& password)
-{
-    st = mysql_stmt_init(sql);
-    const char *query = "insert into player values(?, ?, ?);";
-    if(mysql_stmt_prepare(st, query, strlen(query)))
-    {
-        fprintf(stderr, "mysql_stmt_prepare: %s\n", mysql_error(sql));
-        exit(0);
-    }
-    prepare1(UID, name, password);
-    mysql_stmt_bind_param(st, params); 
-    if (mysql_stmt_execute(st))//执行与语句句柄相关的预处理
-    {
-        fprintf(stderr, " mysql_stmt_execute(), failed\n");
-        fprintf(stderr, " %s\n", mysql_stmt_error(st));
-        exit(0);
-    }        
-    if (mysql_stmt_close(st))
-    {
-        fprintf(stderr, " failed while closing the statement\n");
-        fprintf(stderr, " %s\n", mysql_stmt_error(st));
-        exit(0);
+        if (pm_rct) 
+        {
+            printf("Error: %s\n", pm_rct->errstr);
+        } 
+        else 
+        {
+            printf("Can't allocate redis context\n");
+        }
     }
 }
 
-int CSql::Sql_Query(string& UID, string& password)
+int CRedis::Redis_Write(string& key, string& value)
 {
-    st = mysql_stmt_init(sql);
-    const char *query = "select * from player where uid=? and password=?;";
-    if(mysql_stmt_prepare(st, query, strlen(query)))
-    {
-        fprintf(stderr, "mysql_stmt_prepare: %s\n", mysql_error(sql));
-        exit(0);
-    }
-    prepare(UID, password);
-    mysql_stmt_bind_param(st, params);    
-    //MYSQL_RES* prepare_meta_result = mysql_stmt_result_metadata(st); 
-    //int column_count= mysql_num_fields(prepare_meta_result);
-
-    if (mysql_stmt_execute(st))//执行与语句句柄相关的预处理
-    {
-        fprintf(stderr, " mysql_stmt_execute(), failed\n");
-        fprintf(stderr, " %s\n", mysql_stmt_error(st));
-        exit(0);
-    }
-    //对结果集进行缓冲处理
-    if(mysql_stmt_store_result(st))
-    {
-        fprintf(stderr, " mysql_stmt_store_result() failed\n");
-        fprintf(stderr, " %s\n", mysql_stmt_error(st));
-        exit(0);
-    }
-    int row_count = mysql_stmt_affected_rows(st);//受影响的行
-    if (mysql_stmt_close(st))
-    {
-        fprintf(stderr, " failed while closing the statement\n");
-        fprintf(stderr, " %s\n", mysql_stmt_error(st));
-        exit(0);
-    } 
-    if(row_count == 1)//查询成功
-    {
-        return 1;
-    }
-    else return 0;
+    string cmd = "set " + key + " " + value;
+	pm_rr = (redisReply*)redisCommand(pm_rct, cmd.c_str());
+    return handleReply();
 }
 
-void CSql::Sql_Update(string& name, string& password)
+int CRedis::Redis_Query(string& key, string& value)
 {
-    st = mysql_stmt_init(sql);
-    const char *query = "update player set password=? where name=?;";
-    if(mysql_stmt_prepare(st, query, strlen(query)))
+    string cmd = "get " + key;
+    pm_rr = (redisReply*)redisCommand(pm_rct, cmd.c_str());
+    int ret = handleReply(&value);
+}
+
+int CRedis::Redis_Delete(string& key)
+{
+    string cmd = "del " + key;
+    pm_rr = (redisReply*)redisCommand(pm_rct, cmd.c_str());
+    int rows = 0;
+    int ret = handleReply(&rows);
+    if (ret == M_REDIS_OK)
+        return rows;
+    else
+        return ret;
+}
+
+int CRedis::Redis_Updata(string& key, string& value, string& newvalue)
+{
+    string str ="";//用以储存查到的账号
+    int ret = Redis_Query(key, str);
+    if(ret != M_REDIS_OK)
     {
-        fprintf(stderr, "mysql_stmt_prepare: %s\n", mysql_error(sql));
-        exit(0);
+        printf("Not Find\n");
+        return -1;
     }
-    prepare(password, name);
-    mysql_stmt_bind_param(st, params); 
-    if (mysql_stmt_execute(st))//执行与语句句柄相关的预处理
+    else
     {
-        fprintf(stderr, " mysql_stmt_execute(), failed\n");
-        fprintf(stderr, " %s\n", mysql_stmt_error(st));
-        exit(0);
-    }        
-    if (mysql_stmt_close(st))
-    {
-        fprintf(stderr, " failed while closing the statement\n");
-        fprintf(stderr, " %s\n", mysql_stmt_error(st));
-        exit(0);
+        if(str == value)
+        {
+            Redis_Delete(key);
+            Redis_Write(key, newvalue);
+            return 0;
+        }
+        else
+        {
+            return -2;
+        }
     }
 }
 
-void CSql::Sql_Delete(string& name,string &password)
+string CRedis::getErrorMsg()
 {
-    st = mysql_stmt_init(sql);
-    const char *query = "delete from player where name=? and password=?;";
-    if(mysql_stmt_prepare(st, query, strlen(query)))
+    return error_msg;
+}
+
+int CRedis::handleReply(void* value, redisReply*** array)
+{
+    if (pm_rct->err)
     {
-        fprintf(stderr, "mysql_stmt_prepare: %s\n", mysql_error(sql));
-        exit(0);
+        error_msg = pm_rct->errstr;
+        return M_CONTEXT_ERROR;
     }
-    prepare(name, password);
-    mysql_stmt_bind_param(st, params); 
-    if (mysql_stmt_execute(st))//执行与语句句柄相关的预处理
+
+    if (pm_rr == NULL)
     {
-        fprintf(stderr, " mysql_stmt_execute(), failed\n");
-        fprintf(stderr, " %s\n", mysql_stmt_error(st));
-        exit(0);
-    }        
-    if (mysql_stmt_close(st))
+        error_msg = "auth redisReply is NULL";
+        return M_REPLY_ERROR;
+    }
+
+    switch (pm_rr->type)
     {
-        fprintf(stderr, " failed while closing the statement\n");
-        fprintf(stderr, " %s\n", mysql_stmt_error(st));
-        exit(0);
+        case REDIS_REPLY_ERROR:
+            error_msg = pm_rr->str;
+            return M_EXE_COMMAND_ERROR;
+        case REDIS_REPLY_STATUS:
+            if (!strcmp(pm_rr->str, "OK"))
+            {
+                return M_REDIS_OK;
+            }
+            else
+            {
+                error_msg = pm_rr->str;
+                return M_EXE_COMMAND_ERROR;
+            }
+        case REDIS_REPLY_INTEGER://返回是一个整数
+            *(int*)value = pm_rr->integer;
+            return M_REDIS_OK;
+        case REDIS_REPLY_STRING://返回是一个string
+            *(string*)value = pm_rr->str;
+            return M_REDIS_OK;
+        case REDIS_REPLY_NIL://要返回的数据不存在
+            *(string*)value = "";
+            return M_REDIS_OK;
+        case REDIS_REPLY_ARRAY://返回的是一个数组
+            *(int*)value = pm_rr->elements;
+            *array = pm_rr->element;
+            return M_REDIS_OK;
+        default:
+            error_msg = "unknow reply type";
+            return M_EXE_COMMAND_ERROR;
     }
 }
