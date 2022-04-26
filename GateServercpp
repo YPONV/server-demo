@@ -220,7 +220,7 @@ void epoll_servce(int listen_sock)
 											else//从客户端发来
 											{
 												nAccount.set_fd(fd);
-												SendMessage(nAccount, FD[2]);//发送给GateServer
+												SendMessage(nAccount, FD[2]);//发送给GameServer
 											}
 										}
 										MessageMap[fd] = "";
@@ -237,6 +237,10 @@ void epoll_servce(int listen_sock)
 							}
 							else if(_s == 0)
 							{
+								Account account;
+								account.set_fd(fd);
+								account.set_move(404);//有人断开连接
+								SendMessage(account, FD[2]);//发送给GameServer
 								epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL);
 								close(fd);
 								free(mem);//释放内存
