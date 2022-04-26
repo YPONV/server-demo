@@ -209,10 +209,6 @@ void epoll_servce(int listen_sock)
 										else if(nAccount.move() >= 3)
 										{
 											//cout<<nAccount.move()<<endl;
-											if(nAccount.move() == 9)
-											{
-												cout<<nAccount.message()<<endl;
-											}
 											if(fd == FD[2])//从GameServer发来
 											{
 												SendMessage(nAccount, nAccount.fd());//发给客户端
