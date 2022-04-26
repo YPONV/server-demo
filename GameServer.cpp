@@ -22,6 +22,8 @@ int sockfd;
 MsgQueue* RMSG;
 map<int, bool> RoomMap;//记录房间内所有人的消息是否收到
 map<int, long long> LastTime;//房间上次发消息的时间
+map<int, string> FDGetID;
+map<string, int> IDGetFD;
 set<int> GameStartRoom;//目前已经开始的房间
 set<int> HallPlayer;//大厅的玩家
 
@@ -352,26 +354,31 @@ int main()
 				else if(nAccount.move() == 5)//用户退出所在房间
 				{
 					int Roomid = nAccount.roomid();
-					string str = IntToString(Roomid);
-					nAccount.set_message(str);
-					SendToHallPlayer(nAccount);//将它退出的房间号发给所有大厅的人房间变化
 					RoomMemberRemove(nAccount);//将该人从房间移除
 					if(RoomMember[nAccount.roomid()].size() == 0)//该房间没人了
 					{
 						RoomNumber.push(nAccount.roomid());
 					}
-					str = GetRoomString();
-					nAccount.set_message(str);
-					SendToGateServer(nAccount);//将当前房间信息发送给退出房间的人
-					RoomMap[nAccount.fd()] = false;//准备状态改为0
 					HallPlayer.insert(nAccount.fd());//将fd插入大厅set
+					string str = GetRoomString();//将所有现存房间以及人数发回客户端
+					nAccount.set_message(str);
+					SendToHallPlayer(nAccount);//将它退出后的房间状态发给所有大厅的人
+
+					str = GetRoomState(nAccount.roomid());
+					nAccount.set_message(str);
+					int f = RoomMember[nAccount.roomid()].size();
+					nAccount.set_id(f);
+					nAccount.set_move(6);//将消息修改为ready消息
+					SendToRoomPlayer(nAccount);//将当前房间信息发送给退出房间的人
+					RoomMap[nAccount.fd()] = false;//准备状态改为0
 				}
 				else if(nAccount.move() == 6)//用户准备
 				{
 					RoomMap[nAccount.fd()] = true;
 					str = GetRoomState(nAccount.roomid());
+					int roomid = nAccount.roomid();
+					nAccount.set_id(RoomMember[roomid].size());
 					nAccount.set_message(str);
-					cout<<str<<"     "<<RoomMember[nAccount.roomid()].size()<<endl;
 					SendToRoomPlayer(nAccount);
 					if(RoomMember[nAccount.roomid()].size() == 2)
                 	{
@@ -406,10 +413,18 @@ int main()
 					{
 						RoomMap[nAccount.fd()] = false;
 					}
+					string str = GetRoomState(nAccount.roomid());
+					nAccount.set_message(str);
+					SendToRoomPlayer(nAccount);
 				}
 				else if(nAccount.move() == 8)//游戏结束
 				{
-
+				}
+				else if(nAccount.move() == 404)
+				{
+					//查看是否在大厅
+					//查看是否在房间，是则直接删除出房间
+					//查看是否在房间内，在则房间删除此fd，并停止发送消息，直到上线
 				}
             }
             RMSG->MsgQueue_Close();
