@@ -84,12 +84,13 @@ void SendToGateServer(Account& nAccount)//flag记录是什么事件
 	nAccount.SerializeToArray(p, sz);
 	AddPack(pp, p, sz);
 	char* ptr = pp;
-	sz = sz + 4;
+	sz += 4;
 	while(sz > 0)
 	{
 		int written_bytes = write(sockfd, ptr, sz);
 		if(written_bytes < 0)
         {       
+			cout<<nAccount.flag()<<endl;
             printf("SendMessage error!\n");
         }
         sz -= written_bytes;
@@ -157,6 +158,7 @@ void Player_register(Account& nAccount)
 			string password = nAccount.password();
             sql->Sql_Write(str, name, password);
 			redis->Redis_Write(str, password);
+			bitmap->Set(str);
 			SendToGateServer(nAccount);
             break;
         }
@@ -244,7 +246,7 @@ int main()
 	{
 		printf("create error!\n");
 	}
-	bitmap = new BitMap(10000000);
+	bitmap = new BitMap(10000010);//布隆过滤器初始化
 	string str = sql->GetAllID();//拿过来的所有账号以-隔开
 	bitmap->Init(str);//初始化
     while(1)
