@@ -5,7 +5,9 @@
 #include <string.h>
 #include <queue>
 #include <unistd.h>
+#include <sys/time.h>
 #include <sys/types.h>
+#include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -53,6 +55,12 @@ int StringToInt(string str)
 	}
 	return number;
 }
+long long Gettime()
+{
+    struct timeval tv;
+	gettimeofday(&tv, NULL);
+    return tv.tv_sec * 1000 + tv.tv_usec / 1000;
+}
 void AddPack(char *Newdata,char *data, int len)//给消息包加头
 {
 	int len1 = len;
@@ -70,7 +78,7 @@ void AddPack(char *Newdata,char *data, int len)//给消息包加头
 		Newdata[i + 4] = data[i];
 	}
 }
-void SendMessage(Account& nAccount,int fd)//单独发送消息
+int SendMessage(Account& nAccount,int fd)//单独发送消息
 {
 	char p[1024],pp[1024];
 	memset(p,'\0',sizeof p);
@@ -80,9 +88,15 @@ void SendMessage(Account& nAccount,int fd)//单独发送消息
 	AddPack(pp, p, sz);
 	sz += 4;
 	char* ptr = pp;
+	long long T = Gettime();
 	while(sz > 0)
 	{
-		int written_bytes = write(fd, ptr, sz);
+		long long now = Gettime();
+		if(now - T > 2)
+		{
+			return -1;
+		}
+		int written_bytes = send(fd, ptr, sz,0);
 		if(written_bytes < 0)
         {       
             printf("SendMessage error!\n");
@@ -208,15 +222,19 @@ void epoll_servce(int listen_sock)
 										}
 										else if(nAccount.move() >= 3)
 										{
-											//cout<<nAccount.move()<<endl;
 											if(fd == FD[2])//从GameServer发来
 											{
+												string str = nAccount.message();
 												SendMessage(nAccount, nAccount.fd());//发给客户端
+												int a[1] ={1};
+												setsockopt(FD[2], IPPROTO_TCP, TCP_QUICKACK, a, sizeof(int));
 											}
 											else//从客户端发来
 											{
 												nAccount.set_fd(fd);
-												SendMessage(nAccount, FD[2]);//发送给GameServer
+												long long now=Gettime();
+												SendMessage(nAccount, FD[2]);
+												now=Gettime();
 											}
 										}
 										MessageMap[fd] = "";
@@ -229,7 +247,6 @@ void epoll_servce(int listen_sock)
 										indexMap[fd] ++;
 									}
 								}
-								free(mem);
 							}
 							else if(_s == 0)
 							{
@@ -239,6 +256,7 @@ void epoll_servce(int listen_sock)
 								SendMessage(account, FD[2]);//发送给GameServer
 								epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL);
 								close(fd);
+								cout<<"lost"<<endl;
 								free(mem);//释放内存
 							}
 							else
