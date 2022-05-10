@@ -1,11 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <iostream>
 #include <vector>
 #include <map>
 #include <string.h>
 #include <queue>
 #include <unistd.h>
 #include <sys/time.h>
+#include <netinet/tcp.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
@@ -18,6 +20,7 @@
 #include "MsgQueue.h"
 using namespace std;
 const int MaxRoom = 1024;
+const int MaxPlayer = 4;
 int sockfd;
 MsgQueue* RMSG;
 map<int, bool> RoomMap;//记录房间内所有人的消息是否收到
@@ -79,6 +82,12 @@ void StringToProtobuf(Account& nAccount, string& Message)
 	}
 	nAccount.ParseFromArray(p, Message.size());
 }
+long long Gettime()
+{
+    struct timeval tv;
+	gettimeofday(&tv, NULL);
+    return tv.tv_sec * 1000 + tv.tv_usec / 1000;
+}
 string GetRoomString()//将目前有的房间和房间人数存在string里面
 {
 	string str = "";
@@ -129,7 +138,7 @@ void AddPack(char *Newdata,char *data, int len)//给消息包加头
 		Newdata[i + 4] = data[i];
 	}
 }
-void SendToGateServer(Account& nAccount)//flag记录是什么事件
+int SendToGateServer(Account& nAccount)//flag记录是什么事件
 {
 	char p[1024],pp[1024];
 	memset(p,'\0',sizeof p);
@@ -139,9 +148,15 @@ void SendToGateServer(Account& nAccount)//flag记录是什么事件
 	AddPack(pp, p, sz);
 	char* ptr = pp;
 	sz += 4;
+	long long T = Gettime();
 	while(sz > 0)
 	{
-		int written_bytes = write(sockfd, ptr, sz);
+		long long now = Gettime();
+		if(now - T > 2)
+		{
+			return -1;
+		}
+		int written_bytes = send(sockfd, ptr, sz, 0);
 		if(written_bytes < 0)
         {       
             printf("SendMessage error!\n");
@@ -191,12 +206,6 @@ void RoomMemberRemove(Account& nAccount)
 	RoomMember[nAccount.roomid()].clear();
 	RoomMember[nAccount.roomid()] = NewRoom;
 }
-long long Gettime()
-{
-    struct timeval tv;
-	gettimeofday(&tv, NULL);
-    return tv.tv_sec * 1000 + tv.tv_usec / 1000;
-}
 void do_SendMessage()//给房间所有人发送消息
 {
     set<int>::iterator it;
@@ -204,11 +213,13 @@ void do_SendMessage()//给房间所有人发送消息
     {
         int Roomid = *it;
         bool flag = true;
+		if(RoomMember[Roomid].size() != MaxPlayer)continue;
         for(int i = 0; i < RoomMember[Roomid].size(); i ++ )
         {
             if(RoomMap[RoomMember[Roomid][i]] == false)//该消息未到
             {
                 flag = false;
+				break;
             }
         }
         if(!flag)//没收到所有消息
@@ -218,6 +229,7 @@ void do_SendMessage()//给房间所有人发送消息
         long long nowtime = Gettime();
         if(nowtime - LastTime[Roomid] >= 34)
         {
+			cout<<nowtime-LastTime[Roomid]<<endl;
 			string str = "";
 			Account nAccount;
 			nAccount.set_move(9);
@@ -228,20 +240,91 @@ void do_SendMessage()//给房间所有人发送消息
 			RoomAllMessage[Roomid].push_back(str);//将同步消息存起来
 			RoomMessage[Roomid].clear();
 			nAccount.set_message(str);
+			for(int i = 0; i < RoomMember[Roomid].size(); i ++ )
+            {
+                RoomMap[RoomMember[Roomid][i]] = false;
+            }
+			LastTime[Roomid] = nowtime;
             for(int i = 0; i < RoomMember[Roomid].size(); i ++ )
             {
 				nAccount.set_fd(RoomMember[Roomid][i]);
 				SendToGateServer(nAccount);
-                RoomMap[RoomMember[Roomid][i]] = false;
-            }
-            LastTime[Roomid] = nowtime;
+			}
         }
     }
 }
-static void * Rpthread(void *arg)//接收来自GateServce的消息
+// static void * Rpthread(void *arg)//接收来自GateServce的消息
+// {
+//     string Message = "";
+// 	int flag = 0, number = 0, id = 0;
+// 	if( (sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+// 	{
+// 		perror("socket");
+// 	}
+// 	struct hostent* h;
+// 	if( (h = gethostbyname("10.0.128.212")) == 0)
+// 	{
+// 		printf("gethostbyname failed,\n");
+// 		close(sockfd);
+// 	}
+// 	struct sockaddr_in servaddr;
+// 	memset(&servaddr, 0, sizeof(servaddr));
+// 	servaddr.sin_family = AF_INET;
+// 	servaddr.sin_port = htons(atoi("1111"));
+// 	memcpy(&servaddr.sin_addr, h->h_addr, h->h_length);
+// 	if(connect(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) != 0)
+// 	{
+// 		perror("connect");
+// 		close(sockfd);
+// 	}
+// 	char buffer[1024];
+// 	while(1)
+// 	{
+// 		int iret;
+// 		memset(buffer, 0, sizeof(buffer));
+// 		if( (iret = recv(sockfd, buffer, sizeof(buffer), 0)) <= 0)
+// 		{
+// 			printf("iret=%d\n",iret);
+// 			break;
+// 		}
+// 		for(int i = 0; i < iret; i ++ )
+// 		{
+// 			if(number > 0 && id == 4)
+// 			{
+// 			    Message += buffer[i];
+// 			    number --;
+// 			}
+// 			if(number == 0 && id == 4)
+// 			{
+// 				// Account nAccount;
+// 				// StringToProtobuf(nAccount, Message);//将string反序列化
+				
+//                 RMSG->que.push(Message);
+//                 RMSG->MsgQueue_Close();
+                        
+// 			    Message = "";
+// 			    id = 0;
+// 			    continue;
+//  			}
+//             if(id < 4)
+// 			{
+// 		        number = number*10+buffer[i]-'0';
+// 			    id ++;
+// 			}
+// 		}
+// 		sleep(0.0001);	
+// 	}
+// }
+int main()
 {
-    string Message = "";
-	int flag = 0, number = 0, id = 0;
+    init();
+    // pthread_t tidp;
+    // if ((pthread_create(&tidp, NULL, Rpthread, NULL)) == -1)
+	// {
+	// 	printf("create 1 error!\n");
+	// }
+	string Message = "";
+	int number = 0, id = 0;
 	if( (sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
 	{
 		perror("socket");
@@ -267,11 +350,13 @@ static void * Rpthread(void *arg)//接收来自GateServce的消息
 	{
 		int iret;
 		memset(buffer, 0, sizeof(buffer));
-		if( (iret = recv(sockfd, buffer, sizeof(buffer), 0)) <= 0)
+		if( (iret = recv(sockfd, buffer, sizeof(buffer), MSG_DONTWAIT) ) == 0)
 		{
 			printf("iret=%d\n",iret);
 			break;
 		}
+		int a[1] ={1};
+		setsockopt(sockfd, IPPROTO_TCP, TCP_QUICKACK, a, sizeof(int));
 		for(int i = 0; i < iret; i ++ )
 		{
 			if(number > 0 && id == 4)
@@ -281,52 +366,13 @@ static void * Rpthread(void *arg)//接收来自GateServce的消息
 			}
 			if(number == 0 && id == 4)
 			{
-				Account nAccount;
-				StringToProtobuf(nAccount, Message);//将string反序列化
-				while(1)
-                {
-                    if(RMSG->MsgQueue_Wait())
-                    {
-                        RMSG->que.push(Message);
-                        RMSG->MsgQueue_Close();
-                        break;
-                    }
-                    else sleep(0.03);
-                }
-			    Message = "";
-			    id = 0;
-			    continue;
- 			}
-            if(id < 4)
-			{
-		        number = number*10+buffer[i]-'0';
-			    id ++;
-			}
-		}
-		sleep(0.003);	
-	}
-}
-int main()
-{
-    init();
-    pthread_t tidp;
-    if ((pthread_create(&tidp, NULL, Rpthread, NULL)) == -1)
-	{
-		printf("create 1 error!\n");
-	}
-    while(1)
-    {
-        if(RMSG->MsgQueue_Wait())
-        {
-            while(!RMSG->que.empty())
-            {
-                string str = RMSG->que.front();
-                RMSG->que.pop();
                 Account nAccount;
-                StringToProtobuf(nAccount, str);
+                StringToProtobuf(nAccount, Message);
 				if(nAccount.move() == 9)//同步消息
                 {
                     //房间人数到齐且为操作消息
+					//long long nowtime = Gettime();
+					//cout<<nAccount.fd()<<" "<<nowtime<<endl;
                     RoomMap[nAccount.fd()] = true;//记录该消息已收到
                     RoomMessage[nAccount.roomid()].push_back(nAccount);
                 }
@@ -385,6 +431,7 @@ int main()
 				else if(nAccount.move() == 5)//用户退出所在房间
 				{
 					int Roomid = nAccount.roomid();
+					string UID = nAccount.uid();
 					RoomMemberRemove(nAccount);//将该人从房间移除
 					if(RoomMember[nAccount.roomid()].size() == 0)//该房间没人了
 					{
@@ -399,19 +446,14 @@ int main()
 					nAccount.set_message(str);
 					int f = RoomMember[nAccount.roomid()].size();
 					nAccount.set_id(f);
-					nAccount.set_move(6);//将消息修改为ready消息
 					SendToRoomPlayer(nAccount);//将当前房间信息发送给退出房间的人
 					RoomMap[nAccount.fd()] = false;//准备状态改为0
+					IDGetRoom[UID] = 0;
 				}
 				else if(nAccount.move() == 6)//用户准备
 				{
 					RoomMap[nAccount.fd()] = true;
-					str = GetRoomState(nAccount.roomid());
-					int roomid = nAccount.roomid();
-					nAccount.set_id(RoomMember[roomid].size());
-					nAccount.set_message(str);
-					SendToRoomPlayer(nAccount);
-					if(RoomMember[nAccount.roomid()].size() == 2)
+					if(RoomMember[nAccount.roomid()].size() == MaxPlayer)
                 	{
 						bool flag = true;
 						for(int i = 0; i < RoomMember[nAccount.roomid()].size(); i ++)
@@ -424,10 +466,17 @@ int main()
 						if(flag == true)
 						{
 							GameStartRoom.insert(nAccount.roomid());//将房间号加入开始游戏的房间
-							string str = "S02";
+							string str = "S0";
+							char f = '0'+MaxPlayer;
+							str += f;
 							for(int i = 0; i < RoomMember[nAccount.roomid()].size(); i ++)
 							{
 								RoomMap[RoomMember[nAccount.roomid()][i]] = false;
+								string UID = FDGetID[RoomMember[nAccount.roomid()][i]];
+								IDGetRoom[UID] = 0;
+							}
+							for(int i = 0; i < RoomMember[nAccount.roomid()].size(); i ++)
+							{
 								//发送开始游戏的消息
 								nAccount.set_move(9);
 								str[1] = ('0' + i + 1);
@@ -435,8 +484,17 @@ int main()
 								nAccount.set_fd(RoomMember[nAccount.roomid()][i]);
 								SendToGateServer(nAccount);
 							}
+							LastTime[nAccount.roomid()]=Gettime();
 						}
                     }
+					else
+					{
+						string str = GetRoomState(nAccount.roomid());
+						int roomid = nAccount.roomid();
+						nAccount.set_id(RoomMember[roomid].size());
+						nAccount.set_message(str);
+						SendToRoomPlayer(nAccount);
+					}
 				}
 				else if(nAccount.move() == 7)//取消准备
 				{
@@ -450,6 +508,7 @@ int main()
 				}
 				else if(nAccount.move() == 8)//游戏结束
 				{
+					//SendToGateServer(nAccount);
 				}
 				else if(nAccount.move() == 404)
 				{
@@ -474,13 +533,12 @@ int main()
 						string str = GetRoomString();//将所有现存房间以及人数发回客户端
 						nAccount.set_message(str);
 						SendToHallPlayer(nAccount);//将它退出后的房间状态发给所有大厅的人
-
 						str = GetRoomState(Roomid);
 						nAccount.set_message(str);
 						int f = RoomMember[Roomid].size();
 						nAccount.set_id(f);
 						nAccount.set_move(6);//将消息修改为ready消息
-						SendToRoomPlayer(nAccount);//将当前房间信息发送给退出房间的人
+						SendToRoomPlayer(nAccount);//将当前房间信息发送给房间的人
 						RoomMap[nAccount.fd()] = false;//准备状态改为0
 						IDGetFD[UID] = 0;
 						IDGetRoom[UID] = 0;
@@ -493,13 +551,20 @@ int main()
 					}
 					else//正常退出游戏
 					{
-						
 					}
 				}
-            }
-            RMSG->MsgQueue_Close();
-        }
-        sleep(0.002);//休眠两毫秒
+				Message = "";
+				id = 0;
+				continue;
+ 			}
+			if(id < 4)
+			{
+				number = number*10+buffer[i]-'0';
+				id ++;
+			}
+		}
 		do_SendMessage();
-    }
+		usleep(1000);
+	}    
+	close(sockfd);       
 }
