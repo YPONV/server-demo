@@ -17,13 +17,21 @@
 #include "MsgQueue.h"
 #include "CSql.h"
 #include "CRedis.h"
+#include "CEpoll.h"
 #include "BitMap.h"
 using namespace std;
 MsgQueue* RMSG;//接收消息
 BitMap* bitmap;
 CRedis* redis;
 CSql* sql;
-int sockfd;
+map<int, int> LengthMap;//通过fd获取剩余需要读取的消息长度
+map<int, string> MessageMap;//通过fd得到缓存的消息
+map<int, int> indexMap;//通过fd得知目前消息头读到了第几位
+typedef struct _data_buf
+{
+	int fd;
+	char buf[_BUF_SIZE_];
+}data_buf_t,*data_buf_p;
 string IntToString(int num)
 {
 	string str = "";
@@ -75,7 +83,13 @@ void AddPack(char *Newdata,char *data, int len)//给消息包加头
 		Newdata[i + 4] = data[i];
 	}
 }
-void SendToGateServer(Account& nAccount)//flag记录是什么事件
+long long Gettime()
+{
+    struct timeval tv;
+	gettimeofday(&tv, NULL);
+    return tv.tv_sec * 1000 + tv.tv_usec / 1000;
+}
+void SendToGateServer(Account& nAccount, int sockfd)//flag记录是什么事件
 {
 	char p[1024],pp[1024];
 	memset(p,'\0',sizeof p);
@@ -85,8 +99,11 @@ void SendToGateServer(Account& nAccount)//flag记录是什么事件
 	AddPack(pp, p, sz);
 	char* ptr = pp;
 	sz += 4;
+	long long T = Gettime();
 	while(sz > 0)
 	{
+		long long now = Gettime();
+		if(now - T > 2)break;
 		int written_bytes = write(sockfd, ptr, sz);
 		if(written_bytes < 0)
         {       
@@ -112,7 +129,7 @@ bool Isexist(string str)
     }
     else return false;
 }
-void Player_check(Account& nAccount)
+void Player_check(Account& nAccount, int sockfd)
 {
     int flag = 0;
     string password = "";//用来存储查到的密码
@@ -137,9 +154,9 @@ void Player_check(Account& nAccount)
     {
         nAccount.set_flag(false);
     }
-    SendToGateServer(nAccount);
+    SendToGateServer(nAccount, sockfd);
 }
-void Player_register(Account& nAccount)
+void Player_register(Account& nAccount, int sockfd)
 {
     string str;
     srand(unsigned(time(nullptr)));
@@ -159,117 +176,163 @@ void Player_register(Account& nAccount)
             sql->Sql_Write(str, name, password);
 			redis->Redis_Write(str, password);
 			bitmap->Set(str);
-			SendToGateServer(nAccount);
+			SendToGateServer(nAccount, sockfd);
             break;
         }
         else sleep(0.03);
     }
 }
-static void * Rpthread(void *arg)
+void epoll_servce(int listen_sock)
 {
-    string Message = "";
-	int flag = 0, number = 0, id = 0;
-	if( (sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+	int epoll_fd = epoll_create(256);
+	if(epoll_fd < 0)	
 	{
-		perror("socket");
+		perror("perror_create");
+		exit(1);
 	}
-	struct hostent* h;
-	if( (h = gethostbyname("10.0.128.212")) == 0)
+	//用于注册事件
+	struct epoll_event ev;
+	//数组用于回传要处理的事件
+	struct epoll_event ret_ev[_MAX_];
+	int ret_num = _MAX_;
+	int read_num = -1;
+	ev.events = EPOLLIN;
+	ev.data.fd = listen_sock;
+	if(epoll_ctl(epoll_fd, EPOLL_CTL_ADD, listen_sock, &ev) < 0)
 	{
-		printf("gethostbyname failed,\n");
-		close(sockfd);
+		perror("epoll_ctl");
+		exit(1);
 	}
-	struct sockaddr_in servaddr;
-	memset(&servaddr, 0, sizeof(servaddr));
-	servaddr.sin_family = AF_INET;
-	servaddr.sin_port = htons(atoi("1111"));
-	memcpy(&servaddr.sin_addr, h->h_addr, h->h_length);
-	if(connect(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) != 0)
+	int timeout = 1;
+    int done = 0;
+	int now = 0;//目前是谁登录
+	struct sockaddr_in client;
+	socklen_t len = sizeof(client);
+	struct timeval tv;
+	//printf("before=%ld\n",tv.tv_sec);
+	while(!done)
 	{
-		perror("connect");
-		close(sockfd);
-	}
-	char buffer[1024];
-	while(1)
-	{
-		int iret;
-		memset(buffer, 0, sizeof(buffer));
-		if( (iret = recv(sockfd, buffer, sizeof(buffer), 0)) <= 0)
+		switch(read_num = epoll_wait(epoll_fd, ret_ev, ret_num, timeout))
 		{
-			printf("iret=%d\n",iret);
+			case 0:
+				break;
+			case -1:
+				printf("epoll\n");
+				exit(2);
+			default:
+			{
+				for(int i = 0; i < read_num; i++)
+				{
+					if(ret_ev[i].data.fd == listen_sock && (ret_ev[i].events & EPOLLIN))
+					{
+						int fd = ret_ev[i].data.fd;
+					    int new_sock = accept(fd, (struct sockaddr *)&client, &len);
+						if (new_sock < 0)
+						{
+							perror("accept");
+							continue;					
+						}
+						ev.events = EPOLLIN;
+						ev.data.fd = new_sock;
+                        LengthMap[new_sock] = 0;
+                        MessageMap[new_sock] = "";
+                        indexMap[new_sock] = 0;
+						epoll_ctl(epoll_fd, EPOLL_CTL_ADD, new_sock, &ev);
+						printf("get a new client\n");
+					}
+					else{
+						if(ret_ev[i].events & EPOLLIN)
+						{
+							int fd = ret_ev[i].data.fd;
+							data_buf_p mem = (data_buf_p)malloc(sizeof(data_buf_t));
+							if(!mem)	
+							{
+								printf("malloc");
+								continue;
+							}
+							mem->fd = fd;
+							memset(mem->buf, '\0', sizeof(mem->buf));
+							ssize_t _s = read(mem->fd, mem->buf, sizeof(mem->buf) - 1);
+							if(_s > 0)
+							{
+                                char p[1024];
+								memset(p, '\0' ,sizeof p);
+								for(int i = 0; i < _s; i ++)
+								{
+									if(LengthMap[fd] > 0 && indexMap[fd] == 4)
+									{
+										MessageMap[fd] += mem->buf[i];
+										LengthMap[fd] --;
+									}
+									//一条数据接收完毕
+									if(LengthMap[fd] == 0 && indexMap[fd] == 4)
+									{
+										cout<<"YES"<<endl;
+										for(int j = 0; j < MessageMap[fd].size(); j ++){
+											p[j] = MessageMap[fd][j];
+										}
+										Account nAccount;
+										nAccount.ParseFromArray(p, MessageMap[fd].size());
+										if(nAccount.move() == 1)
+										{
+											Player_check(nAccount, fd);
+										}
+										else if(nAccount.move() == 2)
+										{
+											Player_check(nAccount, fd);
+										}
+										MessageMap[fd] = "";
+										indexMap[fd] = 0;
+										continue;
+									}
+									if(indexMap[fd] < 4)
+									{
+										LengthMap[fd] = LengthMap[fd] * 10 + mem->buf[i] - '0';
+										indexMap[fd] ++;
+									}
+								}
+							}
+							else if(_s == 0)
+							{
+								epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL);
+								close(fd);
+								cout<<"lost"<<endl;
+								free(mem);//释放内存
+							}
+							else
+							{
+								continue;
+							}
+						}
+						else if(ret_ev[i].events & EPOLLOUT)
+						{
+                            data_buf_p mem = (data_buf_p)ret_ev[i].data.ptr;
+                            int fd = mem->fd;
+							ev.events = EPOLLIN;
+							ev.data.fd = fd;
+							epoll_ctl(epoll_fd, EPOLL_CTL_MOD, fd, &ev);
+						}
+					}
+				}
+			}
 			break;
 		}
-		for(int i = 0; i < iret; i ++ )
-		{
-			if(number > 0 && id == 4)
-			{
-			    Message += buffer[i];
-			    number --;
-			}
-			if(number == 0 && id == 4)
-			{
-				Account nAccount;
-				StringToProtobuf(nAccount, Message);//将string反序列化
-				while(1)
-                {
-                    if(RMSG->MsgQueue_Wait())
-                    {
-                        RMSG->que.push(Message);
-                        RMSG->MsgQueue_Close();
-                        break;
-                    }
-                    else sleep(0.03);
-                }
-			    Message = "";
-			    id = 0;
-			    continue;
- 			}
-            if(id < 4)
-			{
-		        number = number*10+buffer[i]-'0';
-			    id ++;
-			}
-		}
-		sleep(0.03);	
 	}
 }
 int main()
 {
-    RMSG = new MsgQueue();//带线程锁的接收消息队列
-    RMSG->MsgQueue_Init();
-    redis = new CRedis();
+	redis = new CRedis();
     redis->Redis_Connect();
     sql = new CSql();
     sql->Sql_Connect();
-    pthread_t tidp;
-    if ((pthread_create(&tidp, NULL, Rpthread, NULL)) == -1)
-	{
-		printf("create error!\n");
-	}
 	bitmap = new BitMap(10000010);//布隆过滤器初始化
 	string str = sql->GetAllID();//拿过来的所有账号以-隔开
 	bitmap->Init(str);//初始化
-    while(1)
-    {
-        if(RMSG->MsgQueue_Wait())
-        {
-            while(!RMSG->que.empty())
-            {
-                string str = RMSG->que.front();
-                RMSG->que.pop();
-                Account nAccount;
-                StringToProtobuf(nAccount, str);
-                if(nAccount.move() == 1)//登录
-                {
-                    Player_check(nAccount);
-                }
-				else
-				{
-					Player_register(nAccount);
-				}
-            }
-            RMSG->MsgQueue_Close();
-        }
-        sleep(0.03);
-    }
+    CEpoll* epoll = new CEpoll();
+	int port = atoi("2222");
+	char ipp[] = "10.0.128.212";
+	char *ip = ipp;
+    epoll->listen_sock = epoll->start(port, ip);//epoll初始化
+    epoll_servce(epoll->listen_sock);
+	close(epoll->listen_sock);
 }
