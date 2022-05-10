@@ -9,3 +9,6 @@ GameServer编译：  g++ GameServer.cpp MsgQueue.cpp CSql.cpp CRedis.cpp project
 
 DBServer编译：    g++ DBServer.cpp MsgQueue.cpp CSql.cpp BitMap.cpp  CRedis.cpp project.pb.cc -lprotobuf -o DBServer  -std=c++11 -lpthread -I/usr/include/mysql/ -L/usr/lib64/mysql -L/usr/local/lib/ -lmysqlclient -L/usr/local/lib/ -lhiredis
 
+LoginServer编译： g++ LoginServer.cpp MsgQueue.cpp CEpoll.cpp project.pb.cc -lprotobuf -o LoginServer -std=c++11 -lpthread -I/usr/include/mysql/ -L/usr/lib64/mysql -L/usr/local/lib/ -lmysqlclient -L/usr/local/lib/ -lhiredisYou have mail in /var/spool/mail/root
+
+运行顺序为：GateServer DBServer LoginServer GameServer
