@@ -20,7 +20,7 @@
 #include "MsgQueue.h"
 using namespace std;
 const int MaxRoom = 1024;
-const int MaxPlayer = 4;
+const int MaxPlayer = 2;
 int sockfd;
 MsgQueue* RMSG;
 map<int, bool> RoomMap;//记录房间内所有人的消息是否收到
@@ -28,8 +28,10 @@ map<int, long long> LastTime;//房间上次发消息的时间
 map<int, string> FDGetID;//通过FD获取ID
 map<string, int> IDGetRoom;//通过ID获得房间号
 map<string, int> IDGetFD;//通过ID获得FD
+map<string, int> IDGetLevel;
 set<int> GameStartRoom;//目前已经开始的房间
 set<int> HallPlayer;//大厅的玩家
+vector<int> Roomlevel[MaxRoom];
 
 map<int, int> LengthMap;//通过fd获取剩余需要读取的消息长度
 map<int, string> MessageMap;//通过fd得到缓存的消息
@@ -112,14 +114,36 @@ string GetRoomString()//将目前有的房间和房间人数存在string里面
 }
 string GetRoomState(int RID)//将房间状态发送给房间内人物
 {
-	string str = "";
-	for(int i = 0; i < RoomMember[RID].size(); i ++)
+	string str = "", str1 = "0000";
+	for(int i = 0; i < 4; i ++)
 	{
-		if(RoomMap[RoomMember[RID][i]])
+		if(i < RoomMember[RID].size() && RoomMap[RoomMember[RID][i]])
 			str += '1';
 		else str += '0';
 	}
+	for(int i = 0; i < Roomlevel[RID].size(); i ++)
+	{
+		int Level = Roomlevel[RID][i];
+		str1[Level-1] ++;
+	}
+	str += str1;
 	return str;
+}
+void CancelChose(nAccount)
+{
+	int Level = IDGetLevel[nAccount.uid()];
+	int roomid = nAccount.roomid();
+	iterator it = Roomlevel[roomid].begin();
+	for(it; it != Roomlevel[roomid].end(); it ++)
+	{
+		if(*it == Level)
+		{
+			Roomlevel[roomid].erase(it);
+			return;
+		}
+	}
+	it = Roomlevel[roomid].end();
+	Roomlevel[roomi].earse(it);
 }
 void AddPack(char *Newdata,char *data, int len)//给消息包加头
 {
@@ -382,7 +406,7 @@ int main()
 					int fd = nAccount.fd();
 					if(IDGetRoom[UID] != 0)//非正常退出,将房间信息发过去
 					{
-						nAccount.set_move(404);
+						nAccount.set_move(10);//追帧消息
 						nAccount.set_roomid(IDGetRoom[UID]);
 						SendAllRoomMessage(nAccount);
 						FDGetID[fd] = UID;
@@ -442,6 +466,7 @@ int main()
 					nAccount.set_message(str);
 					SendToHallPlayer(nAccount);//将它退出后的房间状态发给所有大厅的人
 
+					CancelChose(nAccount);
 					str = GetRoomState(nAccount.roomid());
 					nAccount.set_message(str);
 					int f = RoomMember[nAccount.roomid()].size();
@@ -469,6 +494,11 @@ int main()
 							string str = "S0";
 							char f = '0'+MaxPlayer;
 							str += f;
+							for(int i = 1; i <= 7; i ++ )
+							{
+								int random = rand() % 10;
+								str += random + '0';
+							}
 							for(int i = 0; i < RoomMember[nAccount.roomid()].size(); i ++)
 							{
 								RoomMap[RoomMember[nAccount.roomid()][i]] = false;
@@ -485,6 +515,7 @@ int main()
 								SendToGateServer(nAccount);
 							}
 							LastTime[nAccount.roomid()]=Gettime();
+							Roomlevel[nAccount.roomid()].clear();
 						}
                     }
 					else
@@ -501,14 +532,24 @@ int main()
 					if(GameStartRoom.count(nAccount.roomid()) == 0)//可能因为网络延迟游戏已经开始，没开始才置为0
 					{
 						RoomMap[nAccount.fd()] = false;
+						string str = GetRoomState(nAccount.roomid());
+						nAccount.set_message(str);
+						SendToRoomPlayer(nAccount);
+						CancelChose(nAccount);
 					}
-					string str = GetRoomState(nAccount.roomid());
-					nAccount.set_message(str);
-					SendToRoomPlayer(nAccount);
 				}
 				else if(nAccount.move() == 8)//游戏结束
+				{	
+					int roomid = nAccount.roomid();
+					
+				}
+				else if(nAccount.move() == 20)
 				{
-					//SendToGateServer(nAccount);
+					string Mess = nAccount.message();
+					int Level = Mess[0] - '0';
+					IDGetLevel[nAccount.uid()] = Level;
+					int roomid = nAccount.roomid();
+					Roomlevel[roomid].push_back(Level);
 				}
 				else if(nAccount.move() == 404)
 				{
@@ -528,6 +569,7 @@ int main()
 						RoomMemberRemove(nAccount);//将该人从房间移除
 						if(RoomMember[Roomid].size() == 0)//该房间没人了
 						{
+							Roomlevel[nAccount.roomid()].clear();
 							RoomNumber.push(Roomid);
 						}
 						string str = GetRoomString();//将所有现存房间以及人数发回客户端
@@ -537,9 +579,9 @@ int main()
 						nAccount.set_message(str);
 						int f = RoomMember[Roomid].size();
 						nAccount.set_id(f);
-						nAccount.set_move(6);//将消息修改为ready消息
 						SendToRoomPlayer(nAccount);//将当前房间信息发送给房间的人
 						RoomMap[nAccount.fd()] = false;//准备状态改为0
+						IDGetLevel[nAccount.uid()] = 0;
 						IDGetFD[UID] = 0;
 						IDGetRoom[UID] = 0;
 						FDGetID[fd] = "";
