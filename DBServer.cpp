@@ -120,7 +120,7 @@ bool Isexist(string str)
     int ret = redis->Redis_Query(str, password);
     if(password == "")
     {
-        password = sql->Sql_Query(str, password);
+        sql->Sql_Query(str, password);
         if(password == "")
         {
             return true;
@@ -165,12 +165,13 @@ void Player_register(Account& nAccount, int sockfd)
         str="";
         for(int i = 1; i <= 8; i ++ )
         {
-            int random = rand()%10;
+            int random = rand() % 10;
             str += random + '0';
         }
         if(Isexist(str))//账号合法
         {
 			nAccount.set_flag(true);
+			nAccount.set_uid(str);
 			string name = nAccount.name();
 			string password = nAccount.password();
             sql->Sql_Write(str, name, password);
@@ -179,7 +180,7 @@ void Player_register(Account& nAccount, int sockfd)
 			SendToGateServer(nAccount, sockfd);
             break;
         }
-        else sleep(0.03);
+        else sleep(0.003);
     }
 }
 void epoll_servce(int listen_sock)
