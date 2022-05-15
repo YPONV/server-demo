@@ -44,32 +44,32 @@ queue<int> RoomNumber;//可分配房间号
 
 void init()
 {
-    RMSG = new MsgQueue();
-    for(int i = 1; i <= MaxRoom; i ++)
-    {
-        RoomNumber.push(i);
-    }
+	RMSG = new MsgQueue();
+	for (int i = 1; i <= MaxRoom; i++)
+	{
+		RoomNumber.push(i);
+	}
 }
 string IntToString(int num)
 {
 	string str = "";
-	if(num == 0)
+	if (num == 0)
 	{
 		str += "0";
 		return str;
 	}
-	while(num)
+	while (num)
 	{
-		str += num%10+'0';
+		str += num % 10 + '0';
 		num /= 10;
 	}
-	reverse(str.begin(),str.end());
+	reverse(str.begin(), str.end());
 	return str;
 }
 int StringToInt(string str)
 {
 	int number = 0;
-	for(int i = 0; i < str.size(); i ++ )
+	for (int i = 0; i < str.size(); i++)
 	{
 		number = number * 10 + str[i] - '0';
 	}
@@ -79,30 +79,30 @@ void StringToProtobuf(Account& nAccount, string& Message)
 {
 	char p[1024];
 	memset(p, '\0', sizeof p);
-	for(int j = 0; j < Message.size(); j ++){
+	for (int j = 0; j < Message.size(); j++) {
 		p[j] = Message[j];
 	}
 	nAccount.ParseFromArray(p, Message.size());
 }
 long long Gettime()
 {
-    struct timeval tv;
+	struct timeval tv;
 	gettimeofday(&tv, NULL);
-    return tv.tv_sec * 1000 + tv.tv_usec / 1000;
+	return tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 string GetRoomString()//将目前有的房间和房间人数存在string里面
 {
 	string str = "";
-	map<int,int> RoomFlag;
+	map<int, int> RoomFlag;
 	queue<int> que = RoomNumber;
-	while(!que.empty())
+	while (!que.empty())
 	{
 		RoomFlag[que.front()] = 1;//目前未使用房间
 		que.pop();
 	}
-	for(int i = 1; i <= MaxRoom; i ++)
+	for (int i = 1; i <= MaxRoom; i++)
 	{
-		if(RoomFlag[i] != 1)
+		if (RoomFlag[i] != 1)
 		{
 			str += IntToString(i);//房间号
 			str += '-';
@@ -114,85 +114,84 @@ string GetRoomString()//将目前有的房间和房间人数存在string里面
 }
 string GetRoomState(int RID)//将房间状态发送给房间内人物
 {
-	string str = "", str1 = "0000";
-	for(int i = 0; i < 4; i ++)
+	string str = "", str1 = "00000";
+	for (int i = 0; i < 4; i++)
 	{
-		if(i < RoomMember[RID].size() && RoomMap[RoomMember[RID][i]])
+		if (i < RoomMember[RID].size() && RoomMap[RoomMember[RID][i]])
 			str += '1';
 		else str += '0';
 	}
-	for(int i = 0; i < Roomlevel[RID].size(); i ++)
+	for (int i = 0; i < Roomlevel[RID].size(); i++)
 	{
 		int Level = Roomlevel[RID][i];
-		str1[Level-1] ++;
+		str1[Level - 1] ++;
 	}
 	str += str1;
 	return str;
 }
-void CancelChose(nAccount)
+void CancelChose(Account& nAccount)
 {
 	int Level = IDGetLevel[nAccount.uid()];
 	int roomid = nAccount.roomid();
-	iterator it = Roomlevel[roomid].begin();
-	for(it; it != Roomlevel[roomid].end(); it ++)
+	auto it = Roomlevel[roomid].begin();
+	for (it; it != Roomlevel[roomid].end(); it++)
 	{
-		if(*it == Level)
+		if (*it == Level)
 		{
 			Roomlevel[roomid].erase(it);
+			cout << Roomlevel[roomid].size() << endl;
 			return;
 		}
 	}
-	it = Roomlevel[roomid].end();
-	Roomlevel[roomi].earse(it);
 }
-void AddPack(char *Newdata,char *data, int len)//给消息包加头
+void AddPack(char* Newdata, char* data, int len)//给消息包加头
 {
-	int len1=len;
-	for(int i = 3; i >= 0; i --)
+	int len1 = len;
+	for (int i = 3; i >= 0; i--)
 	{
-		if(len1 > 0)
+		if (len1 > 0)
 		{
 			Newdata[i] = len1 % 10 + '0';
 			len1 /= 10;
 		}
 		else Newdata[i] = '0';
 	}
-	for(int i = 0; i < len; i ++)
+	for (int i = 0; i < len; i++)
 	{
 		Newdata[i + 4] = data[i];
 	}
 }
 int SendToGateServer(Account& nAccount)//flag记录是什么事件
 {
-	char p[1024],pp[1024];
-	memset(p,'\0',sizeof p);
-	memset(pp,'\0',sizeof pp);
+	char p[1024], pp[1024];
+	memset(p, '\0', sizeof p);
+	memset(pp, '\0', sizeof pp);
 	int sz = nAccount.ByteSize();
 	nAccount.SerializeToArray(p, sz);
 	AddPack(pp, p, sz);
 	char* ptr = pp;
 	sz += 4;
 	long long T = Gettime();
-	while(sz > 0)
+	while (sz > 0)
 	{
 		long long now = Gettime();
-		if(now - T > 2)
+		if (now - T > 2)
 		{
 			return -1;
 		}
 		int written_bytes = send(sockfd, ptr, sz, 0);
-		if(written_bytes < 0)
-        {       
-            printf("SendMessage error!\n");
-        }
-        sz -= written_bytes;
-        ptr += written_bytes;     
+		if (written_bytes < 0)
+		{
+			printf("SendMessage error!\n");
+		}
+		sz -= written_bytes;
+		ptr += written_bytes;
 	}
 }
 void SendAllRoomMessage(Account nAccount)
 {
 	int roomid = nAccount.roomid();
-	for(int i = 0; i < RoomAllMessage[roomid].size(); i ++)
+	for (int i = 0; i < RoomAllMessage[roomid].size(); i++)
 	{
 		nAccount.set_message(RoomAllMessage[roomid][i]);
 		SendToGateServer(nAccount);
@@ -201,8 +200,8 @@ void SendAllRoomMessage(Account nAccount)
 void SendToHallPlayer(Account nAccount)
 {
 	set<int>::iterator it;
-    for(it = HallPlayer.begin(); it != HallPlayer.end(); it ++ )
-    {
+	for (it = HallPlayer.begin(); it != HallPlayer.end(); it++)
+	{
 		int fd = *it;
 		nAccount.set_fd(fd);//需要发给的fd
 		SendToGateServer(nAccount);
@@ -211,7 +210,7 @@ void SendToHallPlayer(Account nAccount)
 void SendToRoomPlayer(Account nAccount)
 {
 	int roomid = nAccount.roomid();
-	for(int i = 0; i < RoomMember[roomid].size(); i ++)
+	for (int i = 0; i < RoomMember[roomid].size(); i++)
 	{
 		nAccount.set_fd(RoomMember[roomid][i]);
 		SendToGateServer(nAccount);
@@ -220,9 +219,9 @@ void SendToRoomPlayer(Account nAccount)
 void RoomMemberRemove(Account& nAccount)
 {
 	vector<int> NewRoom;
-	for(int i = 0; i < RoomMember[nAccount.roomid()].size(); i ++)
+	for (int i = 0; i < RoomMember[nAccount.roomid()].size(); i++)
 	{
-		if(RoomMember[nAccount.roomid()][i] != nAccount.fd())
+		if (RoomMember[nAccount.roomid()][i] != nAccount.fd())
 		{
 			NewRoom.push_back(RoomMember[nAccount.roomid()][i]);
 		}
@@ -232,50 +231,49 @@ void RoomMemberRemove(Account& nAccount)
 }
 void do_SendMessage()//给房间所有人发送消息
 {
-    set<int>::iterator it;
-    for(it = GameStartRoom.begin() ;it != GameStartRoom.end(); it ++ )
-    {
-        int Roomid = *it;
-        bool flag = true;
-		if(RoomMember[Roomid].size() != MaxPlayer)continue;
-        for(int i = 0; i < RoomMember[Roomid].size(); i ++ )
-        {
-            if(RoomMap[RoomMember[Roomid][i]] == false)//该消息未到
-            {
-                flag = false;
+	set<int>::iterator it;
+	for (it = GameStartRoom.begin(); it != GameStartRoom.end(); it++)
+	{
+		int Roomid = *it;
+		bool flag = true;
+		if (RoomMember[Roomid].size() != MaxPlayer)continue;
+		for (int i = 0; i < RoomMember[Roomid].size(); i++)
+		{
+			if (RoomMap[RoomMember[Roomid][i]] == false)//该消息未到
+			{
+				flag = false;
 				break;
-            }
-        }
-        if(!flag)//没收到所有消息
-        {
-            continue;
-        }
-        long long nowtime = Gettime();
-        if(nowtime - LastTime[Roomid] >= 34)
-        {
-			cout<<nowtime-LastTime[Roomid]<<endl;
+			}
+		}
+		if (!flag)//没收到所有消息
+		{
+			continue;
+		}
+		long long nowtime = Gettime();
+		if (nowtime - LastTime[Roomid] >= 34)
+		{
 			string str = "";
 			Account nAccount;
 			nAccount.set_move(9);
-			for(int j = 0; j < RoomMessage[Roomid].size(); j ++)
-            {
+			for (int j = 0; j < RoomMessage[Roomid].size(); j++)
+			{
 				str += RoomMessage[Roomid][j].message();
-            }
+			}
 			RoomAllMessage[Roomid].push_back(str);//将同步消息存起来
 			RoomMessage[Roomid].clear();
 			nAccount.set_message(str);
-			for(int i = 0; i < RoomMember[Roomid].size(); i ++ )
-            {
-                RoomMap[RoomMember[Roomid][i]] = false;
-            }
+			for (int i = 0; i < RoomMember[Roomid].size(); i++)
+			{
+				RoomMap[RoomMember[Roomid][i]] = false;
+			}
 			LastTime[Roomid] = nowtime;
-            for(int i = 0; i < RoomMember[Roomid].size(); i ++ )
-            {
+			for (int i = 0; i < RoomMember[Roomid].size(); i++)
+			{
 				nAccount.set_fd(RoomMember[Roomid][i]);
 				SendToGateServer(nAccount);
 			}
-        }
-    }
+		}
+	}
 }
 // static void * Rpthread(void *arg)//接收来自GateServce的消息
 // {
@@ -322,10 +320,10 @@ void do_SendMessage()//给房间所有人发送消息
 // 			{
 // 				// Account nAccount;
 // 				// StringToProtobuf(nAccount, Message);//将string反序列化
-				
+
 //                 RMSG->que.push(Message);
 //                 RMSG->MsgQueue_Close();
-                        
+
 // 			    Message = "";
 // 			    id = 0;
 // 			    continue;
@@ -341,20 +339,20 @@ void do_SendMessage()//给房间所有人发送消息
 // }
 int main()
 {
-    init();
-    // pthread_t tidp;
-    // if ((pthread_create(&tidp, NULL, Rpthread, NULL)) == -1)
+	init();
+	// pthread_t tidp;
+	// if ((pthread_create(&tidp, NULL, Rpthread, NULL)) == -1)
 	// {
 	// 	printf("create 1 error!\n");
 	// }
 	string Message = "";
 	int number = 0, id = 0;
-	if( (sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
 	{
 		perror("socket");
 	}
 	struct hostent* h;
-	if( (h = gethostbyname("10.0.128.212")) == 0)
+	if ((h = gethostbyname("10.0.128.208")) == 0)
 	{
 		printf("gethostbyname failed,\n");
 		close(sockfd);
@@ -364,47 +362,47 @@ int main()
 	servaddr.sin_family = AF_INET;
 	servaddr.sin_port = htons(atoi("1111"));
 	memcpy(&servaddr.sin_addr, h->h_addr, h->h_length);
-	if(connect(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) != 0)
+	if (connect(sockfd, (struct sockaddr*)&servaddr, sizeof(servaddr)) != 0)
 	{
 		perror("connect");
 		close(sockfd);
 	}
 	char buffer[1024];
-	while(1)
+	while (1)
 	{
 		int iret;
 		memset(buffer, 0, sizeof(buffer));
-		if( (iret = recv(sockfd, buffer, sizeof(buffer), MSG_DONTWAIT) ) == 0)
+		if ((iret = recv(sockfd, buffer, sizeof(buffer), MSG_DONTWAIT)) == 0)
 		{
-			printf("iret=%d\n",iret);
+			printf("iret=%d\n", iret);
 			break;
 		}
-		int a[1] ={1};
+		int a[1] = { 1 };
 		setsockopt(sockfd, IPPROTO_TCP, TCP_QUICKACK, a, sizeof(int));
-		for(int i = 0; i < iret; i ++ )
+		for (int i = 0; i < iret; i++)
 		{
-			if(number > 0 && id == 4)
+			if (number > 0 && id == 4)
 			{
-			    Message += buffer[i];
-			    number --;
+				Message += buffer[i];
+				number--;
 			}
-			if(number == 0 && id == 4)
+			if (number == 0 && id == 4)
 			{
-                Account nAccount;
-                StringToProtobuf(nAccount, Message);
-				if(nAccount.move() == 9)//同步消息
-                {
-                    //房间人数到齐且为操作消息
+				Account nAccount;
+				StringToProtobuf(nAccount, Message);
+				if (nAccount.move() == 9)//同步消息
+				{
+					//房间人数到齐且为操作消息
 					//long long nowtime = Gettime();
 					//cout<<nAccount.fd()<<" "<<nowtime<<endl;
-                    RoomMap[nAccount.fd()] = true;//记录该消息已收到
-                    RoomMessage[nAccount.roomid()].push_back(nAccount);
-                }
-				else if(nAccount.move() == 1)//登陆成功，将当前所有的房间发回去
+					RoomMap[nAccount.fd()] = true;//记录该消息已收到
+					RoomMessage[nAccount.roomid()].push_back(nAccount);
+				}
+				else if (nAccount.move() == 1)//登陆成功，将当前所有的房间发回去
 				{
 					string UID = nAccount.uid();
 					int fd = nAccount.fd();
-					if(IDGetRoom[UID] != 0)//非正常退出,将房间信息发过去
+					if (IDGetRoom[UID] != 0)//非正常退出,将房间信息发过去
 					{
 						nAccount.set_move(10);//追帧消息
 						nAccount.set_roomid(IDGetRoom[UID]);
@@ -412,7 +410,7 @@ int main()
 						FDGetID[fd] = UID;
 						IDGetFD[UID] = fd;
 					}
-					else 
+					else
 					{
 						string str = GetRoomString();//将所有现存房间以及人数发回客户端
 						nAccount.set_message(str);
@@ -422,42 +420,45 @@ int main()
 						IDGetFD[UID] = fd;
 					}
 				}
-                else if(nAccount.move() == 3)//请求分配房间
-                {
+				else if (nAccount.move() == 3)//请求分配房间
+				{
 					string UID = nAccount.uid();
-                    nAccount.set_roomid(RoomNumber.front());//分配房间
+					nAccount.set_roomid(RoomNumber.front());//分配房间
 					RoomNumber.pop();
 					nAccount.set_id(1);
-                    RoomMember[nAccount.roomid()].push_back(nAccount.fd());
+					RoomMember[nAccount.roomid()].push_back(nAccount.fd());
 					string str = GetRoomString();//将所有现存房间以及人数发回客户端
 					nAccount.set_message(str);
-                    SendToHallPlayer(nAccount);
 					HallPlayer.erase(nAccount.fd());//从大厅set中删除该角色fd
+					SendToHallPlayer(nAccount);
 					IDGetRoom[UID] = nAccount.roomid();
-                }
-				else if(nAccount.move() == 4)//用户加入房间
+					str = GetRoomState(nAccount.roomid());
+					nAccount.set_message(str);
+					SendToRoomPlayer(nAccount);
+				}
+				else if (nAccount.move() == 4)//用户加入房间
 				{
 					//cout<<nAccount.roomid()<<endl;
 					string UID = nAccount.uid();
-				 	RoomMember[nAccount.roomid()].push_back(nAccount.fd());
+					RoomMember[nAccount.roomid()].push_back(nAccount.fd());
 					int id = RoomMember[nAccount.roomid()].size();
 					nAccount.set_id(id);
 					string str = GetRoomString();//将所有现存房间以及人数发回客户端
 					nAccount.set_message(str);
 					HallPlayer.erase(nAccount.fd());
-                    SendToHallPlayer(nAccount);
+					SendToHallPlayer(nAccount);
 					str = GetRoomState(nAccount.roomid());
 					nAccount.set_message(str);
 					SendToRoomPlayer(nAccount);
 					IDGetRoom[UID] = nAccount.roomid();
 					//HallPlayer.erase(nAccount.fd());//从大厅set中删除该角色fd
 				}
-				else if(nAccount.move() == 5)//用户退出所在房间
+				else if (nAccount.move() == 5)//用户退出所在房间
 				{
 					int Roomid = nAccount.roomid();
 					string UID = nAccount.uid();
 					RoomMemberRemove(nAccount);//将该人从房间移除
-					if(RoomMember[nAccount.roomid()].size() == 0)//该房间没人了
+					if (RoomMember[nAccount.roomid()].size() == 0)//该房间没人了
 					{
 						RoomNumber.push(nAccount.roomid());
 					}
@@ -465,8 +466,9 @@ int main()
 					string str = GetRoomString();//将所有现存房间以及人数发回客户端
 					nAccount.set_message(str);
 					SendToHallPlayer(nAccount);//将它退出后的房间状态发给所有大厅的人
-
+					
 					CancelChose(nAccount);
+					IDGetLevel[UID] = 0;
 					str = GetRoomState(nAccount.roomid());
 					nAccount.set_message(str);
 					int f = RoomMember[nAccount.roomid()].size();
@@ -475,37 +477,37 @@ int main()
 					RoomMap[nAccount.fd()] = false;//准备状态改为0
 					IDGetRoom[UID] = 0;
 				}
-				else if(nAccount.move() == 6)//用户准备
+				else if (nAccount.move() == 6)//用户准备
 				{
 					RoomMap[nAccount.fd()] = true;
-					if(RoomMember[nAccount.roomid()].size() == MaxPlayer)
-                	{
+					if (RoomMember[nAccount.roomid()].size() == MaxPlayer)
+					{
 						bool flag = true;
-						for(int i = 0; i < RoomMember[nAccount.roomid()].size(); i ++)
+						for (int i = 0; i < RoomMember[nAccount.roomid()].size(); i++)
 						{
-							if(RoomMap[RoomMember[nAccount.roomid()][i]] != true)
+							if (RoomMap[RoomMember[nAccount.roomid()][i]] != true)
 							{
 								flag = false;
 							}
 						}
-						if(flag == true)
+						if (flag == true)
 						{
 							GameStartRoom.insert(nAccount.roomid());//将房间号加入开始游戏的房间
 							string str = "S0";
-							char f = '0'+MaxPlayer;
+							char f = '0' + MaxPlayer;
 							str += f;
-							for(int i = 1; i <= 7; i ++ )
+							for (int i = 1; i <= 7; i++)
 							{
 								int random = rand() % 10;
 								str += random + '0';
 							}
-							for(int i = 0; i < RoomMember[nAccount.roomid()].size(); i ++)
+							for (int i = 0; i < RoomMember[nAccount.roomid()].size(); i++)
 							{
 								RoomMap[RoomMember[nAccount.roomid()][i]] = false;
 								string UID = FDGetID[RoomMember[nAccount.roomid()][i]];
 								IDGetRoom[UID] = 0;
 							}
-							for(int i = 0; i < RoomMember[nAccount.roomid()].size(); i ++)
+							for (int i = 0; i < RoomMember[nAccount.roomid()].size(); i++)
 							{
 								//发送开始游戏的消息
 								nAccount.set_move(9);
@@ -514,10 +516,18 @@ int main()
 								nAccount.set_fd(RoomMember[nAccount.roomid()][i]);
 								SendToGateServer(nAccount);
 							}
-							LastTime[nAccount.roomid()]=Gettime();
+							LastTime[nAccount.roomid()] = Gettime();
 							Roomlevel[nAccount.roomid()].clear();
 						}
-                    }
+						else
+						{
+							string str = GetRoomState(nAccount.roomid());
+							int roomid = nAccount.roomid();
+							nAccount.set_id(RoomMember[roomid].size());
+							nAccount.set_message(str);
+							SendToRoomPlayer(nAccount);
+						}
+					}
 					else
 					{
 						string str = GetRoomState(nAccount.roomid());
@@ -527,47 +537,55 @@ int main()
 						SendToRoomPlayer(nAccount);
 					}
 				}
-				else if(nAccount.move() == 7)//取消准备
+				else if (nAccount.move() == 7)//取消准备
 				{
-					if(GameStartRoom.count(nAccount.roomid()) == 0)//可能因为网络延迟游戏已经开始，没开始才置为0
+					if (GameStartRoom.count(nAccount.roomid()) == 0)//可能因为网络延迟游戏已经开始，没开始才置为0
 					{
 						RoomMap[nAccount.fd()] = false;
 						string str = GetRoomState(nAccount.roomid());
 						nAccount.set_message(str);
 						SendToRoomPlayer(nAccount);
-						CancelChose(nAccount);
 					}
 				}
-				else if(nAccount.move() == 8)//游戏结束
-				{	
-					int roomid = nAccount.roomid();
-					
-				}
-				else if(nAccount.move() == 20)
+				else if (nAccount.move() == 8)//游戏结束
 				{
+					int roomid = nAccount.roomid();
+
+				}
+				else if (nAccount.move() == 20)
+				{
+					string UID = nAccount.uid();
+					if (IDGetLevel[UID] != 0)
+					{
+						CancelChose(nAccount);
+					}
 					string Mess = nAccount.message();
 					int Level = Mess[0] - '0';
-					IDGetLevel[nAccount.uid()] = Level;
+					IDGetLevel[UID] = Level;
 					int roomid = nAccount.roomid();
 					Roomlevel[roomid].push_back(Level);
+					string str = GetRoomState(roomid);
+					cout << str << endl;
+					nAccount.set_message(str);
+					SendToRoomPlayer(nAccount);
 				}
-				else if(nAccount.move() == 404)
+				else if (nAccount.move() == 404)
 				{
 					int fd = nAccount.fd();
 					string UID = FDGetID[fd];
-					if(HallPlayer.find(fd) != HallPlayer.end())//在大厅里
+					if (HallPlayer.find(fd) != HallPlayer.end())//在大厅里
 					{
 						HallPlayer.erase(fd);
 						IDGetFD[UID] = 0;
 						FDGetID[fd] = "";
 					}
-					else if(IDGetRoom[UID] != 0)//在房间里
+					else if (IDGetRoom[UID] != 0)//在房间里
 					{
 						int Roomid = IDGetRoom[UID];
 						nAccount.set_move(5);
 						nAccount.set_roomid(Roomid);
 						RoomMemberRemove(nAccount);//将该人从房间移除
-						if(RoomMember[Roomid].size() == 0)//该房间没人了
+						if (RoomMember[Roomid].size() == 0)//该房间没人了
 						{
 							Roomlevel[nAccount.roomid()].clear();
 							RoomNumber.push(Roomid);
@@ -586,7 +604,7 @@ int main()
 						IDGetRoom[UID] = 0;
 						FDGetID[fd] = "";
 					}
-					else if(IDGetRoom[UID] != 0)//在游戏中
+					else if (IDGetRoom[UID] != 0)//在游戏中
 					{
 						IDGetFD[UID] = 0;
 						FDGetID[fd] = "";
@@ -598,15 +616,15 @@ int main()
 				Message = "";
 				id = 0;
 				continue;
- 			}
-			if(id < 4)
+			}
+			if (id < 4)
 			{
-				number = number*10+buffer[i]-'0';
-				id ++;
+				number = number * 10 + buffer[i] - '0';
+				id++;
 			}
 		}
 		do_SendMessage();
 		usleep(1000);
-	}    
-	close(sockfd);       
+	}
+	close(sockfd);
 }
