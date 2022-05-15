@@ -210,8 +210,12 @@ void SendToHallPlayer(Account nAccount)
 void SendToRoomPlayer(Account nAccount)
 {
 	int roomid = nAccount.roomid();
+	string str = nAccount.message();
 	for (int i = 0; i < RoomMember[roomid].size(); i++)
 	{
+		char p = '0' + i + 1;
+		string Mes = str + p;
+		nAccount.set_message(Mes);
 		nAccount.set_fd(RoomMember[roomid][i]);
 		SendToGateServer(nAccount);
 	}
