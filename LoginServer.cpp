@@ -313,7 +313,6 @@ int main()
 				Account nAccount;
                 StringToProtobuf(nAccount, Message[1]);
 				SendMessage(nAccount, sockfd[0]);
-				cout<<"Send"<<nAccount.uid()<<endl;
 				Message[1] = "";
 				id[1] = 0;
 				continue;
