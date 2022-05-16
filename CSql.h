@@ -24,7 +24,7 @@ public:
     //写入
     int Sql_Write(string& UID, string& name, string& password);
     //查询
-    int Sql_Query(string& UID, string& password);
+    string Sql_Query(string& UID, string& password);
     //修改
     void Sql_Update(string& UID, string& password);
     //删除
