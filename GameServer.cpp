@@ -28,10 +28,14 @@ map<int, long long> LastTime;//房间上次发消息的时间
 map<int, string> FDGetID;//通过FD获取ID
 map<string, int> IDGetRoom;//通过ID获得房间号
 map<string, int> IDGetFD;//通过ID获得FD
-map<string, int> IDGetLevel;
+map<string, int> IDGetLevel;//
+map<string, string> IDGetName;//通过ID获取Name
 set<int> GameStartRoom;//目前已经开始的房间
 set<int> HallPlayer;//大厅的玩家
-vector<int> Roomlevel[MaxRoom];
+vector<int> Roomlevel[MaxRoom];//选择的关卡
+vector<string> RoomPlayerID[MaxRoom];//房间内人物的id
+vector<string> RoomPlayerName[MaxRoom];//房间内人物的姓名
+vector<int> RoomRank[MaxRoom];//房间返回的排名
 
 map<int, int> LengthMap;//通过fd获取剩余需要读取的消息长度
 map<int, string> MessageMap;//通过fd得到缓存的消息
@@ -67,7 +71,7 @@ string IntToString(int num)
 	return str;
 }
 int StringToInt(string str)
-{
+{ 
 	int number = 0;
 	for (int i = 0; i < str.size(); i++)
 	{
@@ -99,6 +103,12 @@ string GetRoomString()//将目前有的房间和房间人数存在string里面
 	{
 		RoomFlag[que.front()] = 1;//目前未使用房间
 		que.pop();
+	}
+	set<int>::iterator it;
+	for (it = GameStartRoom.begin(); it != GameStartRoom.end(); it++)
+	{
+		int Roomid = *it;
+		RoomFlag[Roomid] = 1;
 	}
 	for (int i = 1; i <= MaxRoom; i++)
 	{
@@ -139,7 +149,6 @@ void CancelChose(Account& nAccount)
 		if (*it == Level)
 		{
 			Roomlevel[roomid].erase(it);
-			cout << Roomlevel[roomid].size() << endl;
 			return;
 		}
 	}
@@ -188,16 +197,28 @@ int SendToGateServer(Account& nAccount)//flag记录是什么事件
 		ptr += written_bytes;
 	}
 }
-void SendAllRoomMessage(Account nAccount)
+void SendAllRoomMessage(Account& nAccount)
 {
 	int roomid = nAccount.roomid();
-	for (int i = 0; i < RoomAllMessage[roomid].size(); i++)
+	int number = RoomAllMessage[roomid].size();
+	nAccount.set_move(9);
+	string str = to_string(number);
+	int sec = 5-str.size();
+	while(sec--)
+	{
+		str = '0' + str;
+	}
+	str = RoomAllMessage[roomid][0] + str;
+	str[0] = 'R';
+	nAccount.set_message(str);
+	SendToGateServer(nAccount);
+	for (int i = 1; i < RoomAllMessage[roomid].size(); i++)
 	{
 		nAccount.set_message(RoomAllMessage[roomid][i]);
 		SendToGateServer(nAccount);
 	}
 }
-void SendToHallPlayer(Account nAccount)
+void SendToHallPlayer(Account& nAccount)
 {
 	set<int>::iterator it;
 	for (it = HallPlayer.begin(); it != HallPlayer.end(); it++)
@@ -235,6 +256,11 @@ void RoomMemberRemove(Account& nAccount)
 }
 void do_SendMessage()//给房间所有人发送消息
 {
+	// if(GameStartRoom.size() == 1)
+	// {
+	// 	cout<<"YES"<<endl;
+	// }
+	// else cout<<"NO"<<endl;
 	set<int>::iterator it;
 	for (it = GameStartRoom.begin(); it != GameStartRoom.end(); it++)
 	{
@@ -356,7 +382,7 @@ int main()
 		perror("socket");
 	}
 	struct hostent* h;
-	if ((h = gethostbyname("10.0.128.208")) == 0)
+	if ((h = gethostbyname("10.0.128.212")) == 0)
 	{
 		printf("gethostbyname failed,\n");
 		close(sockfd);
@@ -406,9 +432,21 @@ int main()
 				{
 					string UID = nAccount.uid();
 					int fd = nAccount.fd();
+					IDGetName[UID] = nAccount.name();
 					if (IDGetRoom[UID] != 0)//非正常退出,将房间信息发过去
 					{
-						nAccount.set_move(10);//追帧消息
+						int roomid = IDGetRoom[UID];
+						int Oldfd = IDGetFD[UID];
+						RoomPlayerID[roomid].push_back(UID);
+						for(int i = 0; i < RoomMember[roomid].size(); i ++)
+						{
+							if(Oldfd == RoomMember[roomid][i])
+							{
+								RoomAllMessage[roomid][0][1] = ('0' + i + 1);
+								RoomMember[roomid][i] = fd;
+								break;
+							}
+						}
 						nAccount.set_roomid(IDGetRoom[UID]);
 						SendAllRoomMessage(nAccount);
 						FDGetID[fd] = UID;
@@ -472,7 +510,6 @@ int main()
 					SendToHallPlayer(nAccount);//将它退出后的房间状态发给所有大厅的人
 					
 					CancelChose(nAccount);
-					IDGetLevel[UID] = 0;
 					str = GetRoomState(nAccount.roomid());
 					nAccount.set_message(str);
 					int f = RoomMember[nAccount.roomid()].size();
@@ -496,6 +533,17 @@ int main()
 						}
 						if (flag == true)
 						{
+							int a[10] = {0};
+							int MX = 0, ans = 0;
+							for(int i = 0; i < Roomlevel[nAccount.roomid()].size(); i ++)
+							{
+								a[Roomlevel[nAccount.roomid()][i]]++;
+								if(a[Roomlevel[nAccount.roomid()][i]] > ans)
+								{
+									ans = a[Roomlevel[nAccount.roomid()][i]];
+									MX = Roomlevel[nAccount.roomid()][i];
+								}
+							}
 							GameStartRoom.insert(nAccount.roomid());//将房间号加入开始游戏的房间
 							string str = "S0";
 							char f = '0' + MaxPlayer;
@@ -505,12 +553,19 @@ int main()
 								int random = rand() % 10;
 								str += random + '0';
 							}
+							f = '0' + MX;
+							str += f;
 							for (int i = 0; i < RoomMember[nAccount.roomid()].size(); i++)
 							{
 								RoomMap[RoomMember[nAccount.roomid()][i]] = false;
 								string UID = FDGetID[RoomMember[nAccount.roomid()][i]];
-								IDGetRoom[UID] = 0;
+								IDGetRoom[UID] = nAccount.roomid();
+								IDGetLevel[UID] = 0;
+								RoomPlayerName[nAccount.roomid()].push_back(IDGetName[UID]);
+								RoomPlayerID[nAccount.roomid()].push_back(UID);
 							}
+							RoomAllMessage[nAccount.roomid()].push_back(str);
+							str += "00000";
 							for (int i = 0; i < RoomMember[nAccount.roomid()].size(); i++)
 							{
 								//发送开始游戏的消息
@@ -554,7 +609,57 @@ int main()
 				else if (nAccount.move() == 8)//游戏结束
 				{
 					int roomid = nAccount.roomid();
+					RoomMap[nAccount.fd()] = false;
+					string str = nAccount.message();
+					int Rank = str[0] - '0';
+					RoomRank[roomid].push_back(Rank);
+					if(RoomRank[roomid].size() == MaxPlayer)//收到所有人的消息
+					{
+						bool flag = true;
+						for(int i = 1; i < MaxPlayer; i ++)
+						{
+							if(RoomRank[roomid][i] != RoomRank[roomid][i-1])
+							{
+								flag = false;
+							}
+						}
+						if(flag)
+						{
+							if(RoomRank[roomid][0] == 0)
+							{
+								str = RoomPlayerName[roomid][0] + "-" +  RoomPlayerName[roomid][2] + RoomPlayerName[roomid][1] + "-" +  RoomPlayerName[roomid][3];
+							}
+							else if(RoomRank[roomid][0] == 1)
+							{
+								str = RoomPlayerName[roomid][1] + "-" +  RoomPlayerName[roomid][3] + RoomPlayerName[roomid][0] + "-" +  RoomPlayerName[roomid][2];
+							}
+							else
+							{
+								str = "D";
+							}
+							nAccount.set_message(str);
+							SendToRoomPlayer(nAccount);
 
+							str = GetRoomState(nAccount.roomid());
+							nAccount.set_message(str);
+							SendToRoomPlayer(nAccount);
+						}
+						else
+						{
+							str = "E";//有人作弊,或者不同步
+							nAccount.set_message(str);
+							SendToRoomPlayer(nAccount);
+							str = GetRoomState(nAccount.roomid());
+							nAccount.set_message(str);
+							SendToRoomPlayer(nAccount);
+						}
+						RoomRank[roomid].clear();
+						GameStartRoom.erase(roomid);//从开始游戏的房间删除出去
+						RoomAllMessage[roomid].clear();
+						RoomMember[roomid].clear();
+						RoomPlayerID[roomid].clear();
+						RoomPlayerName[roomid].clear();
+					}
 				}
 				else if (nAccount.move() == 20)
 				{
@@ -569,7 +674,6 @@ int main()
 					int roomid = nAccount.roomid();
 					Roomlevel[roomid].push_back(Level);
 					string str = GetRoomState(roomid);
-					cout << str << endl;
 					nAccount.set_message(str);
 					SendToRoomPlayer(nAccount);
 				}
@@ -583,7 +687,36 @@ int main()
 						IDGetFD[UID] = 0;
 						FDGetID[fd] = "";
 					}
-					else if (IDGetRoom[UID] != 0)//在房间里
+					else if(GameStartRoom.find(IDGetRoom[UID]) != GameStartRoom.end())//游戏中
+					{
+						int roomid = IDGetRoom[UID];
+						auto it = RoomPlayerID[roomid].begin();
+						for(it; it != RoomPlayerID[roomid].end(); it ++)
+						{
+							if(*it == UID)
+							{
+								RoomPlayerID[roomid].erase(it);
+								break;
+							}
+						}
+						if(RoomPlayerID[roomid].size() == 0)//房间人走完了
+						{
+							for(int i = 0; i < RoomMember[roomid].size(); i ++)
+							{
+								string uid = FDGetID[RoomMember[roomid][i]];
+								IDGetRoom[uid] = 0;
+								RoomMap[RoomMember[roomid][i]] = false;
+							}
+							RoomNumber.push(roomid);
+							GameStartRoom.erase(roomid);
+							RoomMember[roomid].clear();
+							RoomAllMessage[roomid].clear();
+							RoomPlayerName[roomid].clear();
+							RoomPlayerID[roomid].clear();
+							cout<<"all clear"<<endl;
+						}
+					}
+					else if (IDGetRoom[UID] != 0)//在房间
 					{
 						int Roomid = IDGetRoom[UID];
 						nAccount.set_move(5);
@@ -606,11 +739,6 @@ int main()
 						IDGetLevel[nAccount.uid()] = 0;
 						IDGetFD[UID] = 0;
 						IDGetRoom[UID] = 0;
-						FDGetID[fd] = "";
-					}
-					else if (IDGetRoom[UID] != 0)//在游戏中
-					{
-						IDGetFD[UID] = 0;
 						FDGetID[fd] = "";
 					}
 					else//正常退出游戏
