@@ -382,7 +382,7 @@ int main()
 		perror("socket");
 	}
 	struct hostent* h;
-	if ((h = gethostbyname("10.0.128.212")) == 0)
+	if ((h = gethostbyname("10.0.128.208")) == 0)
 	{
 		printf("gethostbyname failed,\n");
 		close(sockfd);
@@ -625,22 +625,44 @@ int main()
 						}
 						if(flag)
 						{
-							if(RoomRank[roomid][0] == 0)
+							if (MaxPlayer == 4)
 							{
-								str = RoomPlayerName[roomid][0] + "-" +  RoomPlayerName[roomid][2] + RoomPlayerName[roomid][1] + "-" +  RoomPlayerName[roomid][3];
-							}
-							else if(RoomRank[roomid][0] == 1)
-							{
-								str = RoomPlayerName[roomid][1] + "-" +  RoomPlayerName[roomid][3] + RoomPlayerName[roomid][0] + "-" +  RoomPlayerName[roomid][2];
+								if (RoomRank[roomid][0] == 0)
+								{
+									str = "0-" + RoomPlayerName[roomid][0] + "-" + RoomPlayerName[roomid][2] + RoomPlayerName[roomid][1] + "-" + RoomPlayerName[roomid][3];
+								}
+								else if (RoomRank[roomid][0] == 1)
+								{
+									str = "1-" + RoomPlayerName[roomid][1] + "-" + RoomPlayerName[roomid][3] + RoomPlayerName[roomid][0] + "-" + RoomPlayerName[roomid][2];
+								}
+								else
+								{
+									str = "2-" + RoomPlayerName[roomid][0] + "-" + RoomPlayerName[roomid][1] + "-" + RoomPlayerName[roomid][2] + "-" + RoomPlayerName[roomid][3];
+								}
 							}
 							else
 							{
-								str = "D";
+								if (RoomRank[roomid][0] == 0)
+								{
+									str = "0-" + RoomPlayerName[roomid][0] + "-" + RoomPlayerName[roomid][1];
+								}
+								else if (RoomRank[roomid][0] == 1)
+								{
+									str = "1-" + RoomPlayerName[roomid][0] + "-" + RoomPlayerName[roomid][1];
+								}
+								else
+								{
+									str = "2-" + RoomPlayerName[roomid][0] + "-" + RoomPlayerName[roomid][1];
+								}
 							}
+							cout << str << endl;
 							nAccount.set_message(str);
 							SendToRoomPlayer(nAccount);
 
 							str = GetRoomState(nAccount.roomid());
+							cout << str << endl;
+							nAccount.set_move(4);
+							nAccount.set_id(MaxPlayer);
 							nAccount.set_message(str);
 							SendToRoomPlayer(nAccount);
 						}
