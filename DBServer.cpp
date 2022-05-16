@@ -131,22 +131,41 @@ bool Isexist(string str)
 }
 void Player_check(Account& nAccount, int sockfd)
 {
-    int flag = 0;
     string password = "";//用来存储查到的密码
     string UID = nAccount.uid();
-    int ret = redis->Redis_Query(UID, password);
-    if(password == "")//redis未查到密码，查mysql
-    {
-		if(bitmap->IsExist(UID))//过滤器中存在
-		{
-			flag = sql->Sql_Query(UID, password);
-			if(flag == 1 && password == nAccount.password())//mysql内有,存入Redis
+	if(bitmap->IsExist(UID))//过滤器中存在	
+	{
+		string PAS = "";
+    	int ret = redis->Redis_Query(UID, PAS);
+    	if(PAS == "")//redis未查到密码，查mysql
+    	{
+			string name = sql->Sql_Query(UID, password);
+			if(password != "" && password == nAccount.password())//mysql内有,存入Redis
 			{
-				redis->Redis_Write(UID, password);
+				PAS = password + "-" + name;
+				redis->Redis_Write(UID, PAS);
+				nAccount.set_name(name);
 			}
+    	}
+		else 
+		{
+			bool flag = true;
+			string name = "";
+			for(int i = 0; i < PAS.size(); i ++)
+			{
+				if(PAS[i] == '-')
+				{
+					flag = false;
+					continue;
+				}
+				if(flag)
+					password += PAS[i]; 
+				else name += PAS[i];
+			}
+			nAccount.set_name(name);
 		}
-    }
-    if(password == nAccount.password())
+	}
+    if(password != "" && password == nAccount.password())
     {
         nAccount.set_flag(true);
     }
@@ -175,7 +194,8 @@ void Player_register(Account& nAccount, int sockfd)
 			string name = nAccount.name();
 			string password = nAccount.password();
             sql->Sql_Write(str, name, password);
-			redis->Redis_Write(str, password);
+			string PAS = password + "-" + name;
+			redis->Redis_Write(str, PAS);
 			bitmap->Set(str);
 			SendToGateServer(nAccount, sockfd);
             break;
@@ -268,7 +288,6 @@ void epoll_servce(int listen_sock)
 									//一条数据接收完毕
 									if(LengthMap[fd] == 0 && indexMap[fd] == 4)
 									{
-										cout<<"YES"<<endl;
 										for(int j = 0; j < MessageMap[fd].size(); j ++){
 											p[j] = MessageMap[fd][j];
 										}
@@ -280,7 +299,7 @@ void epoll_servce(int listen_sock)
 										}
 										else if(nAccount.move() == 2)
 										{
-											Player_check(nAccount, fd);
+											Player_register(nAccount, fd);
 										}
 										MessageMap[fd] = "";
 										indexMap[fd] = 0;
