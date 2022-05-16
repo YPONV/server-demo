@@ -79,7 +79,7 @@ int CSql::Sql_Write(string& UID, string& name, string& password)
     }
 }
 
-int CSql::Sql_Query(string& UID, string& password)
+string CSql::Sql_Query(string& UID, string& password)
 {
     st = mysql_stmt_init(sql);
     const char *query = "select * from player where uid=?;";
@@ -114,7 +114,7 @@ int CSql::Sql_Query(string& UID, string& password)
     bind[1].length= &str_length[1];
 
     bind[2].buffer_type= MYSQL_TYPE_STRING; //设置第3个占位符的属性
-    bind[2].buffer= (char *)str_data2;
+    bind[2].buffer= (char *)str_data3;
     bind[2].buffer_length= 64;
     bind[2].is_null= 0;
     bind[2].length= &str_length[2];
@@ -131,18 +131,21 @@ int CSql::Sql_Query(string& UID, string& password)
         fprintf(stderr, " %s\n", mysql_stmt_error(st));
         exit(0);
     }
-    int number = 0;
+    string name = "";
     while(!mysql_stmt_fetch(st))
     {
-        number ++;
         int len = strlen(str_data2);
         for(int i = 0; i < len; i ++)
         {
-            password += str_data2[i];
+            name += str_data2[i];
+        }
+        len = strlen(str_data3);
+        for(int i = 0; i < len; i ++)
+        {
+            password += str_data3[i];
         }
     }
-    if(number == 1)return true;
-    else return false;
+    return name;
 }
 
 void CSql::Sql_Update(string& UID, string& password)
