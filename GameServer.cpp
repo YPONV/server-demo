@@ -398,6 +398,7 @@ int main()
 		close(sockfd);
 	}
 	char buffer[1024];
+	bool flag = false;
 	while (1)
 	{
 		int iret;
@@ -608,6 +609,7 @@ int main()
 				}
 				else if (nAccount.move() == 8)//游戏结束
 				{
+					flag = true;
 					int roomid = nAccount.roomid();
 					RoomMap[nAccount.fd()] = false;
 					string str = nAccount.message();
@@ -625,6 +627,10 @@ int main()
 						}
 						if(flag)
 						{
+							for (int i = 0; i < RoomMember[roomid].size(); i++)
+							{
+								RoomMap[RoomMember[nAccount.roomid()][i]] = false;
+							}
 							if (MaxPlayer == 4)
 							{
 								if (RoomRank[roomid][0] == 0)
@@ -655,12 +661,11 @@ int main()
 									str = "2-" + RoomPlayerName[roomid][0] + "-" + RoomPlayerName[roomid][1];
 								}
 							}
-							cout << str << endl;
 							nAccount.set_message(str);
 							SendToRoomPlayer(nAccount);
 
 							str = GetRoomState(nAccount.roomid());
-							cout << str << endl;
+							cout << "now:" << str << endl;
 							nAccount.set_move(4);
 							nAccount.set_id(MaxPlayer);
 							nAccount.set_message(str);
@@ -678,13 +683,16 @@ int main()
 						RoomRank[roomid].clear();
 						GameStartRoom.erase(roomid);//从开始游戏的房间删除出去
 						RoomAllMessage[roomid].clear();
-						RoomMember[roomid].clear();
 						RoomPlayerID[roomid].clear();
 						RoomPlayerName[roomid].clear();
 					}
 				}
 				else if (nAccount.move() == 20)
 				{
+					if (flag)
+					{
+						cout <<"chose"<< nAccount.message() << endl;
+					}
 					string UID = nAccount.uid();
 					if (IDGetLevel[UID] != 0)
 					{
@@ -697,6 +705,7 @@ int main()
 					Roomlevel[roomid].push_back(Level);
 					string str = GetRoomState(roomid);
 					nAccount.set_message(str);
+					cout << str << endl;
 					SendToRoomPlayer(nAccount);
 				}
 				else if (nAccount.move() == 404)
@@ -743,11 +752,16 @@ int main()
 						int Roomid = IDGetRoom[UID];
 						nAccount.set_move(5);
 						nAccount.set_roomid(Roomid);
+						if (IDGetLevel[UID] != 0)
+						{
+							CancelChose(nAccount);
+						}
 						RoomMemberRemove(nAccount);//将该人从房间移除
 						if (RoomMember[Roomid].size() == 0)//该房间没人了
 						{
 							Roomlevel[nAccount.roomid()].clear();
 							RoomNumber.push(Roomid);
+							Roomlevel[nAccount.roomid()].clear();
 						}
 						string str = GetRoomString();//将所有现存房间以及人数发回客户端
 						nAccount.set_message(str);
