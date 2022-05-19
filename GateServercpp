@@ -204,15 +204,23 @@ void epoll_servce(int listen_sock)
 										{
 											if(fd == FD[1])//从DBServer发回来的
 											{
-												SendMessage(nAccount, nAccount.fd());//发回客户端
+												if(nAccount.move() == 2)
+												{
+													SendMessage(nAccount, nAccount.fd());//发回客户端
+												}
 												if(nAccount.move() == 1 && nAccount.flag() == true)//登录成功则发送发到GameServer
 												{
 													SendMessage(nAccount, FD[2]);//发送到GameServer
 												}
+												else SendMessage(nAccount, nAccount.fd());//发回客户端
 											}
 											else if(fd == FD[2])
 											{
-												SendMessage(nAccount, nAccount.fd());
+												if(nAccount.flag() == true)
+												{
+													SendMessage(nAccount, nAccount.fd());
+													SendMessage(nAccount, nAccount.fd());
+												}
 											}
 											else//从客户端发来的
 											{	
@@ -224,6 +232,11 @@ void epoll_servce(int listen_sock)
 										{
 											if(fd == FD[2])//从GameServer发来
 											{
+												if(nAccount.move() == 100)
+												{
+													epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, NULL);
+													close(fd);
+												}
 												string str = nAccount.message();
 												SendMessage(nAccount, nAccount.fd());//发给客户端
 												int a[1] ={1};
@@ -247,6 +260,7 @@ void epoll_servce(int listen_sock)
 										indexMap[fd] ++;
 									}
 								}
+								free(mem);//释放内存
 							}
 							else if(_s == 0)
 							{
