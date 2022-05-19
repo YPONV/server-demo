@@ -182,7 +182,7 @@ void Player_register(Account& nAccount, int sockfd)
     while(1)
     {
         str="";
-        for(int i = 1; i <= 8; i ++ )
+        for(int i = 1; i <= 6; i ++ )
         {
             int random = rand() % 10;
             str += random + '0';
